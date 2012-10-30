@@ -7,7 +7,6 @@ include/jquery-1.4.2.min.js
 *.version*
 favicon.*
 home.html
-addon
 *~
 
 #ignore documentation, it should be newly built 

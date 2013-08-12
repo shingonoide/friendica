@@ -379,10 +379,12 @@ function title_is_body($title, $body) {
 
 	$title = strip_tags($title);
 	$title = trim($title);
+	$title = html_entity_decode($title, ENT_QUOTES, 'UTF-8');
 	$title = str_replace(array("\n", "\r", "\t", " "), array("","","",""), $title);
 
 	$body = strip_tags($body);
 	$body = trim($body);
+	$body = html_entity_decode($body, ENT_QUOTES, 'UTF-8');
 	$body = str_replace(array("\n", "\r", "\t", " "), array("","","",""), $body);
 
 	if (strlen($title) < strlen($body))
@@ -793,6 +795,8 @@ function get_atom_elements($feed,$item) {
 	// There is some better way to parse this array - but it didn't worked for me.
 	$child = $item->feed->data["child"][SIMPLEPIE_NAMESPACE_ATOM_10]["feed"][0]["child"][SIMPLEPIE_NAMESPACE_ATOM_10]["entry"][0]["child"]["http://activitystrea.ms/spec/1.0/"][object][0]["child"];
 	if (is_array($child)) {
+		logger('get_atom_elements: Looking for status.net repeated message');
+
 		$message = $child["http://activitystrea.ms/spec/1.0/"]["object"][0]["child"][SIMPLEPIE_NAMESPACE_ATOM_10]["content"][0]["data"];
 		$author = $child[SIMPLEPIE_NAMESPACE_ATOM_10]["author"][0]["child"][SIMPLEPIE_NAMESPACE_ATOM_10];
 		$uri = $author["uri"][0]["data"];
@@ -801,6 +805,8 @@ function get_atom_elements($feed,$item) {
 		$avatar = $avatar["href"];
 
 		if (($name != "") and ($uri != "") and ($avatar != "") and ($message != "")) {
+			logger('get_atom_elements: fixing sender of repeated message');
+
 			$res["owner-name"] = $res["author-name"];
 			$res["owner-link"] = $res["author-link"];
 			$res["owner-avatar"] = $res["author-avatar"];
@@ -879,7 +885,7 @@ function item_store($arr,$force_parent = false) {
 
 
 	if (version_compare(PHP_VERSION, '5.3.0', '>=')) {
-		require_once('Text/LanguageDetect.php');
+		require_once('library/langdet/Text/LanguageDetect.php');
 		$naked_body = preg_replace('/\[(.+?)\]/','',$arr['body']);
 		$l = new Text_LanguageDetect;
 		$lng = $l->detectConfidence($naked_body);
@@ -2168,8 +2174,9 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 }
 
 function local_delivery($importer,$data) {
-
 	$a = get_app();
+
+    logger(__function__, LOGGER_TRACE);
 
 	if($importer['readonly']) {
 		// We aren't receiving stuff from this person. But we will quietly ignore them
@@ -2305,7 +2312,7 @@ function local_delivery($importer,$data) {
 	}
 
 
-/*
+
 	// Currently unsupported - needs a lot of work
 	$reloc = $feed->get_feed_tags( NAMESPACE_DFRN, 'relocate' );
 	if(isset($reloc[0]['child'][NAMESPACE_DFRN])) {
@@ -2315,23 +2322,79 @@ function local_delivery($importer,$data) {
 		$newloc['cid'] = $importer['id'];
 		$newloc['name'] = notags(unxmlify($base['name'][0]['data']));
 		$newloc['photo'] = notags(unxmlify($base['photo'][0]['data']));
+		$newloc['thumb'] = notags(unxmlify($base['thumb'][0]['data']));
+		$newloc['micro'] = notags(unxmlify($base['micro'][0]['data']));
 		$newloc['url'] = notags(unxmlify($base['url'][0]['data']));
 		$newloc['request'] = notags(unxmlify($base['request'][0]['data']));
 		$newloc['confirm'] = notags(unxmlify($base['confirm'][0]['data']));
 		$newloc['notify'] = notags(unxmlify($base['notify'][0]['data']));
 		$newloc['poll'] = notags(unxmlify($base['poll'][0]['data']));
-		$newloc['site-pubkey'] = notags(unxmlify($base['site-pubkey'][0]['data']));
-		$newloc['pubkey'] = notags(unxmlify($base['pubkey'][0]['data']));
-		$newloc['prvkey'] = notags(unxmlify($base['prvkey'][0]['data']));
+		$newloc['sitepubkey'] = notags(unxmlify($base['sitepubkey'][0]['data']));
+		/** relocated user must have original key pair */
+		/*$newloc['pubkey'] = notags(unxmlify($base['pubkey'][0]['data']));
+		$newloc['prvkey'] = notags(unxmlify($base['prvkey'][0]['data']));*/
+		
+        logger("items:relocate contact ".print_r($newloc, true).print_r($importer, true), LOGGER_DEBUG);
+        
+        // update contact
+        $r = q("SELECT photo, url FROM contact WHERE id=%d AND uid=%d;",
+                    intval($importer['id']),
+					intval($importer['importer_uid']));
+		if ($r === false) 
+			return 1;
+        $old = $r[0];
+        
+        $x = q("UPDATE contact SET
+                        name = '%s',
+                        photo = '%s',
+                        thumb = '%s',
+                        micro = '%s',
+                        url = '%s',
+                        request = '%s',
+                        confirm = '%s',
+                        notify = '%s',
+                        poll = '%s',
+                        `site-pubkey` = '%s'
+                WHERE id=%d AND uid=%d;",
+                    dbesc($newloc['name']),
+                    dbesc($newloc['photo']),
+                    dbesc($newloc['thumb']),
+                    dbesc($newloc['micro']),
+                    dbesc($newloc['url']),
+                    dbesc($newloc['request']),
+                    dbesc($newloc['confirm']),
+                    dbesc($newloc['notify']),
+                    dbesc($newloc['poll']),
+                    dbesc($newloc['sitepubkey']),
+                    intval($importer['id']),
+					intval($importer['importer_uid']));
+
+        if ($x === false)
+			return 1;
+        // update items
+        $fields = array(
+            'owner-link' => array($old['url'], $newloc['url']),
+            'author-link' => array($old['url'], $newloc['url']),
+            'owner-avatar' => array($old['photo'], $newloc['photo']),
+            'author-avatar' => array($old['photo'], $newloc['photo']),
+        );
+        foreach ($fields as $n=>$f){
+            $x = q("UPDATE item SET `%s`='%s' WHERE `%s`='%s' AND uid=%d",
+                        $n, dbesc($f[1]),
+                        $n, dbesc($f[0]),
+                        intval($importer['importer_uid']));
+			if ($x === false)
+				return 1;
+		}
 		
 		// TODO
 		// merge with current record, current contents have priority
 		// update record, set url-updated
 		// update profile photos
 		// schedule a scan?
-
+        return 0;
 	}
-*/
+
 
 	// handle friend suggestion notification
 
@@ -3232,7 +3295,7 @@ function new_follower($importer,$contact,$datarray,$item,$sharing = false) {
 	if(is_array($contact)) {
 		if(($contact['network'] == NETWORK_OSTATUS && $contact['rel'] == CONTACT_IS_SHARING)
 			|| ($sharing && $contact['rel'] == CONTACT_IS_FOLLOWER)) {
-			$r = q("UPDATE `contact` SET `rel` = %d WHERE `id` = %d AND `uid` = %d LIMIT 1",
+			$r = q("UPDATE `contact` SET `rel` = %d, `writable` = 1 WHERE `id` = %d AND `uid` = %d LIMIT 1",
 				intval(CONTACT_IS_FRIEND),
 				intval($contact['id']),
 				intval($importer['uid'])
@@ -3901,10 +3964,10 @@ function drop_item($id,$interactive = true) {
 
 		// send the notification upstream/downstream as the case may be
 
+		proc_run('php',"include/notifier.php","drop","$drop_id");
+
 		if(! $interactive)
 			return $owner;
-
-		proc_run('php',"include/notifier.php","drop","$drop_id");
 		goaway($a->get_baseurl() . '/' . $_SESSION['return_url']);
 		//NOTREACHED
 	}
@@ -3968,10 +4031,13 @@ function posted_dates($uid,$wall) {
 function posted_date_widget($url,$uid,$wall) {
 	$o = '';
 
+	if(! feature_enabled($uid,'archives'))
+		return $o;
+
 	// For former Facebook folks that left because of "timeline"
 
-	if($wall && intval(get_pconfig($uid,'system','no_wall_archive_widget')))
-		return $o;
+/*	if($wall && intval(get_pconfig($uid,'system','no_wall_archive_widget')))
+		return $o;*/
 
 	$ret = posted_dates($uid,$wall);
 	if(! count($ret))

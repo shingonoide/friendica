@@ -27,7 +27,7 @@
 	<img id="like-rotator-$item.id" class="like-rotator" src="images/rotator.gif" alt="$item.wait" title="$item.wait" style="display: none;" />
 </div>
 
-<div class="wall-item-container $item.indent" id="item-$item.id">
+<div class="wall-item-container $item.indent $item.shiny" id="item-$item.id">
 	<div class="wall-item-item">
 		<div class="wall-item-info">
 			<div class="contact-photo-wrapper mframe{{ if $item.owner_url }} wwfrom{{ endif }}"
@@ -93,8 +93,9 @@
 			{{ if $item.star }}
 				<a href="#" id="star-$item.id" onclick="dostar($item.id); return false;"  class="$item.star.classdo"  title="$item.star.do">$item.star.do</a>
 				<a href="#" id="unstar-$item.id" onclick="dostar($item.id); return false;"  class="$item.star.classundo"  title="$item.star.undo">$item.star.undo</a>
-				<a href="#" id="tagger-$item.id" onclick="itemTag($item.id); return false;" class="$item.star.classtagger" title="$item.star.tagger">$item.star.tagger</a>
-
+			{{ endif }}
+			{{ if $item.tagger }}
+				<a href="#" id="tagger-$item.id" onclick="itemTag($item.id); return false;" class="$item.tagger.class" title="$item.tagger.add">$item.tagger.add</a>
 			{{ endif }}
 			{{ if $item.filer }}
                                 <a href="#" id="filer-$item.id" onclick="itemFiler($item.id); return false;" class="filer-item filer-icon" title="$item.filer">$item.filer</a>
@@ -102,7 +103,9 @@
 			
 			{{ if $item.vote }}
 				<a href="#" id="like-$item.id" title="$item.vote.like.0" onclick="dolike($item.id,'like'); return false">$item.vote.like.1</a>
+				{{ if $item.vote.dislike }}
 				<a href="#" id="dislike-$item.id" title="$item.vote.dislike.0" onclick="dolike($item.id,'dislike'); return false">$item.vote.dislike.1</a>
+				{{ endif }}
 			{{ endif }}
 						
 			{{ if $item.vote.share }}
@@ -132,7 +135,7 @@
 	</div>
 	
 	{{ if $item.threaded }}{{ if $item.comment }}{{ if $item.indent==comment }}
-	<div class="wall-item-bottom">
+	<div class="wall-item-bottom commentbox">
 		<div class="wall-item-links"></div>
 		<div class="wall-item-comment-wrapper">
 					$item.comment
@@ -143,7 +146,7 @@
 
 
 {{ for $item.children as $child }}
-	{{ if $item.type == tag }}
+	{{ if $child.type == tag }}
 		{{ inc wall_item_tag.tpl with $item=$child }}{{ endinc }}
 	{{ else }}
 		{{ inc $item.template with $item=$child }}{{ endinc }}
@@ -158,6 +161,7 @@
 {{if $item.comment_lastcollapsed}}</div>{{endif}}
 {{ endif }}
 
+{# top thread comment box #}
 {{if $item.threaded}}{{if $item.comment}}{{if $item.thread_level==1}}
 <div class="wall-item-comment-wrapper" >$item.comment</div>
 {{ endif }}{{ endif }}{{ endif }}

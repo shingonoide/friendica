@@ -9,11 +9,12 @@ require_once('include/pgettext.php');
 require_once('include/nav.php');
 require_once('include/cache.php');
 require_once('library/Mobile_Detect/Mobile_Detect.php');
+require_once('include/features.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.0.1508' );
+define ( 'FRIENDICA_VERSION',      '3.0.1546' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
-define ( 'DB_UPDATE_VERSION',      1156      );
+define ( 'DB_UPDATE_VERSION',      1157      );
 
 define ( 'EOL',                    "<br />\r\n"     );
 define ( 'ATOM_TIME',              'Y-m-d\TH:i:s\Z' );
@@ -359,18 +360,28 @@ if(! class_exists('App')) {
 
 		public $category;
 
+
 		// Allow themes to control internal parameters
 		// by changing App values in theme.php
-		//
-		// Possibly should make these part of the plugin
-		// system, but it seems like overkill to invoke
-		// all the plugin machinery just to change a couple
-		// of values
+
 		public	$sourcename = '';
 		public	$videowidth = 425;
 		public	$videoheight = 350;
 		public	$force_max_items = 0;
 		public	$theme_thread_allow = true;
+
+		// An array for all theme-controllable parameters
+		// Mostly unimplemented yet. Only options 'stylesheet' and
+		// beyond are used.
+
+		public	$theme = array(
+			'sourcename' => '',
+			'videowidth' => 425,
+			'videoheight' => 350,
+			'force_max_items' => 0,
+			'thread_allow' => true,
+			'stylesheet' => ''
+		);
 
 		private $scheme;
 		private $hostname;
@@ -385,7 +396,7 @@ if(! class_exists('App')) {
 							
 		function __construct() {
 
-			global $default_timezone;
+			global $default_timezone, $argv, $argc;
 
 			$this->timezone = ((x($default_timezone)) ? $default_timezone : 'UTC');
 
@@ -428,6 +439,10 @@ if(! class_exists('App')) {
 				if(isset($path) && strlen($path) && ($path != $this->path))
 					$this->path = $path;
 			}
+			if (is_array($argv) && $argc>1 && substr(end($argv), 0, 4)=="http" ) {
+				$this->set_baseurl(array_pop($argv) );
+				$argc --;
+			}
 
 			set_include_path(
 					"include/$this->hostname" . PATH_SEPARATOR
@@ -436,6 +451,7 @@ if(! class_exists('App')) {
 					. 'library/phpsec' . PATH_SEPARATOR
 					. 'library/langdet' . PATH_SEPARATOR
 					. '.' );
+            
 
 			if((x($_SERVER,'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'],0,2) === "q=") {
 				$this->query_string = substr($_SERVER['QUERY_STRING'],2);
@@ -576,6 +592,13 @@ if(! class_exists('App')) {
 				$interval = 40000;
 
 			$this->page['title'] = $this->config['sitename'];
+
+			/* put the head template at the beginning of page['htmlhead']
+			 * since the code added by the modules frequently depends on it
+			 * being first
+			 */
+			if(!isset($this->page['htmlhead']))
+				$this->page['htmlhead'] = '';
 			$tpl = get_markup_template('head.tpl');
 			$this->page['htmlhead'] = replace_macros($tpl,array(
 				'$baseurl' => $this->get_baseurl(), // FIXME for z_path!!!!
@@ -586,14 +609,16 @@ if(! class_exists('App')) {
 				'$showmore' => t('show more'),
 				'$showfewer' => t('show fewer'),
 				'$update_interval' => $interval
-			));
+			)) . $this->page['htmlhead'];
 		}
 
 		function init_page_end() {
+			if(!isset($this->page['end']))
+				$this->page['end'] = '';
 			$tpl = get_markup_template('end.tpl');
 			$this->page['end'] = replace_macros($tpl,array(
 				'$baseurl' => $this->get_baseurl() // FIXME for z_path!!!!
-			));
+			)) . $this->page['end'];
 		}
 
 		function set_curl_code($code) {
@@ -913,6 +938,7 @@ if(! function_exists('login')) {
 
 			$tpl = get_markup_template("login.tpl");
 			$_SESSION['return_url'] = $a->query_string;
+			$a->module = 'login';
 		}
 
 
@@ -924,6 +950,7 @@ if(! function_exists('login')) {
 	
 			'$lname'	 	=> array('username', t('Nickname or Email address: ') , '', ''),
 			'$lpassword' 	=> array('password', t('Password: '), '', ''),
+			'$lremember'	=> array('remember', t('Remember me'), 0, ''),
 	
 			'$openid'		=> !$noid,
 			'$lopenid'      => array('openid_url', t('Or login using OpenID: '),'',''),
@@ -985,6 +1012,13 @@ if(! function_exists('remote_user')) {
 // a page is loaded. Usually used for errors or alerts.
 
 if(! function_exists('notice')) {
+	/**
+	 * Show an error message to user.
+	 * 
+	 * This function save text in session, to be shown to the user at next page load
+	 * 
+	 * @param string $s - Text of notice
+	 */
 	function notice($s) {
 		$a = get_app();
 		if(! x($_SESSION,'sysmsg'))	$_SESSION['sysmsg'] = array();
@@ -993,6 +1027,13 @@ if(! function_exists('notice')) {
 	}
 }
 if(! function_exists('info')) {
+	/**
+	 * Show an info message to user.
+	 * 
+	 * This function save text in session, to be shown to the user at next page load
+	 * 
+	 * @param string $s - Text of notice
+	 */
 	function info($s) {
 		$a = get_app();
 		if(! x($_SESSION,'sysmsg_info')) $_SESSION['sysmsg_info'] = array();
@@ -1193,7 +1234,7 @@ if(! function_exists('profile_sidebar')) {
 
 
 		// show edit profile to yourself
-		if ($profile['uid'] == local_user()) {
+		if ($profile['uid'] == local_user() && feature_enabled(local_user(),'multi_profiles')) {
 			$profile['edit'] = array($a->get_baseurl(). '/profiles', t('Profiles'),"", t('Manage/edit profiles'));
 		
 			$r = q("SELECT * FROM `profile` WHERE `uid` = %d",
@@ -1501,14 +1542,20 @@ if(! function_exists('proc_run')) {
 
 		if(count($args) && $args[0] === 'php')
 			$args[0] = ((x($a->config,'php_path')) && (strlen($a->config['php_path'])) ? $a->config['php_path'] : 'php');
-		for($x = 0; $x < count($args); $x ++)
+        
+        // add baseurl to args. cli scripts can't construct it
+        $args[] = $a->get_baseurl();
+        
+        for($x = 0; $x < count($args); $x ++)
 			$args[$x] = escapeshellarg($args[$x]);
+
+        
 
 		$cmdline = implode($args," ");
 		if(get_config('system','proc_windows'))
-			proc_close(proc_open('cmd /c start /b ' . $cmdline,array(),$foo));
+			proc_close(proc_open('cmd /c start /b ' . $cmdline,array(),$foo,dirname(__FILE__)));
 		else
-			proc_close(proc_open($cmdline." &",array(),$foo));
+			proc_close(proc_open($cmdline." &",array(),$foo,dirname(__FILE__)));
 	}
 }
 
@@ -1796,3 +1843,61 @@ function curPageURL() {
 	return $pageURL;
 }
 
+function random_digits($digits) {
+	$rn = '';
+	for($i = 0; $i < $digits; $i++) {
+		$rn .= rand(0,9);
+	}
+	return $rn;
+}
+
+function get_cachefile($file, $writemode = true) {
+	$cache = get_config("system","itemcache");
+
+	if ($cache == "")
+		return("");
+
+	if (!is_dir($cache))
+		return("");
+
+	$subfolder = $cache."/".substr($file, 0, 2);
+
+	$cachepath = $subfolder."/".$file;
+
+	if ($writemode) {
+		if (!is_dir($subfolder)) {
+			mkdir($subfolder);
+			chmod($subfolder, 0777);
+		}
+	}
+
+	return($cachepath);
+}
+
+function clear_cache($basepath = "", $path = "") {
+	if ($path == "") {
+		$basepath = get_config('system','itemcache');
+		$path = $basepath;
+	}
+
+	if (($path == "") OR (!is_dir($path)))
+		return;
+
+	if (substr(realpath($path), 0, strlen($basepath)) != $basepath)
+		return;
+
+	$cachetime = (int)get_config('system','itemcache_duration');
+	if ($cachetime == 0)
+		$cachetime = 86400;
+
+	if ($dh = opendir($path)) {
+		while (($file = readdir($dh)) !== false) {
+			$fullpath = $path."/".$file;
+			if ((filetype($fullpath) == "dir") and ($file != ".") and ($file != ".."))
+				clear_cache($basepath, $fullpath);
+			if ((filetype($fullpath) == "file") and filectime($fullpath) < (time() - $cachetime))
+				unlink($fullpath);
+		}
+		closedir($dh);
+	}
+}

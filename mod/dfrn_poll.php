@@ -96,7 +96,7 @@ function dfrn_poll_init(&$a) {
 					$_SESSION['visitor_home'] = $r[0]['url'];
 					$_SESSION['visitor_handle'] = $r[0]['addr'];
 					$_SESSION['visitor_visiting'] = $r[0]['uid'];
-					info( sprintf(t('%s welcomes %s'), $r[0]['username'] , $r[0]['name']) . EOL);
+					info( sprintf(t('%1$s welcomes %2$s'), $r[0]['username'] , $r[0]['name']) . EOL);
 					// Visitors get 1 day session.
 					$session_id = session_id();
 					$expire = time() + 86400;
@@ -493,7 +493,7 @@ function dfrn_poll_content(&$a) {
 
 			switch($destination_url) {
 				case 'profile':
-					$dest = $a->get_baseurl() . '/profile/' . $profile . '?tab=profile';
+					$dest = $a->get_baseurl() . '/profile/' . $profile . '?f=&tab=profile';
 					break;
 				case 'photos':
 					$dest = $a->get_baseurl() . '/photos/' . $profile;
@@ -503,7 +503,7 @@ function dfrn_poll_content(&$a) {
 					$dest = $a->get_baseurl() . '/profile/' . $profile;
 					break;		
 				default:
-					$dest = $destination_url;
+					$dest = $destination_url . '?f=&redir=1';
 					break;
 			}
 
@@ -527,7 +527,7 @@ function dfrn_poll_content(&$a) {
 					$_SESSION['visitor_id'] = $r[0]['id'];
 					$_SESSION['visitor_home'] = $r[0]['url'];
 					$_SESSION['visitor_visiting'] = $r[0]['uid'];
-					info( sprintf(t('%s welcomes %s'), $r[0]['username'] , $r[0]['name']) . EOL);
+					info( sprintf(t('%1$s welcomes %2$s'), $r[0]['username'] , $r[0]['name']) . EOL);
 					// Visitors get 1 day session.
 					$session_id = session_id();
 					$expire = time() + 86400;

@@ -242,7 +242,7 @@ $a->strings["Error: GD graphics PHP module with JPEG support required but not in
 $a->strings["Error: openssl PHP module required but not installed."] = "Errore: il modulo openssl di PHP è richiesto, ma non risulta installato.";
 $a->strings["Error: mysqli PHP module required but not installed."] = "Errore: il modulo mysqli di PHP è richiesto, ma non risulta installato";
 $a->strings["Error: mb_string PHP module required but not installed."] = "Errore: il modulo PHP mb_string è richiesto, ma non risulta installato.";
-$a->strings["The web installer needs to be able to create a file called \".htconfig.php\ in the top folder of your web server and it is unable to do so."] = "L'installazione web deve poter creare un file chiamato \".htconfig.php\" nella cartella principale del tuo web server ma non è in grado di farlo.";
+$a->strings["The web installer needs to be able to create a file called \".htconfig.php\" in the top folder of your web server and it is unable to do so."] = "L'installazione web deve poter creare un file chiamato \".htconfig.php\" nella cartella principale del tuo web server ma non è in grado di farlo.";
 $a->strings["This is most often a permission setting, as the web server may not be able to write files in your folder - even if you can."] = "Ciò è dovuto spesso a impostazioni di permessi, dato che il web server può non essere in grado di scrivere il file nella tua cartella, anche se tu puoi.";
 $a->strings["At the end of this procedure, we will give you a text to save in a file named .htconfig.php in your Friendica top folder."] = "";
 $a->strings["You can alternatively skip this procedure and perform a manual installation. Please see the file \"INSTALL.txt\" for instructions."] = "";
@@ -641,7 +641,7 @@ $a->strings["Go to Your Site's Directory"] = "";
 $a->strings["The Directory page lets you find other people in this network or other federated sites. Look for a <em>Connect</em> or <em>Follow</em> link on their profile page. Provide your own Identity Address if requested."] = "La pagina Elenco ti permette di trovare altre persone in questa rete o in altri siti. Cerca un link <em>Connetti</em> o <em>Segui</em> nella loro pagina del profilo. Inserisci il tuo Indirizzo Identità, se richiesto.";
 $a->strings["Finding New People"] = "";
 $a->strings["On the side panel of the Contacts page are several tools to find new friends. We can match people by interest, look up people by name or interest, and provide suggestions based on network relationships. On a brand new site, friend suggestions will usually begin to be populated within 24 hours."] = "Nel pannello laterale nella pagina \"Contatti\", ci sono diversi strumenti per trovare nuovi amici. Possiamo confrontare le persone per interessi, cercare le persone per nome e fornire suggerimenti basati sui tuoi contatti esistenti. Su un sito nuovo, i suggerimenti sono di solito presenti dopo 24 ore.";
-$a->strings["Groups"] = "Grouppi";
+$a->strings["Groups"] = "Gruppi";
 $a->strings["Group Your Contacts"] = "";
 $a->strings["Once you have made some friends, organize them into private conversation groups from the sidebar of your Contacts page and then you can interact with each group privately on your Network page."] = "Quando avrai alcuni amici, organizzali in gruppi di conversazioni private dalla barra laterale della tua pagina Contatti. Potrai interagire privatamente con ogni gruppo nella tua pagina Rete";
 $a->strings["Why Aren't My Posts Public?"] = "";

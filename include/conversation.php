@@ -413,6 +413,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 
 		if(!$update) {
 			$tab = notags(trim($_GET['tab']));
+			$tab = ( $tab ? $tab : 'posts' );
 			if($tab === 'posts') {
 				// This is ugly, but we can't pass the profile_uid through the session to the ajax updater,
 				// because browser prefetching might change it on us. We have to deliver it with the page.
@@ -435,7 +436,11 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 	else if($mode === 'display') {
 		$profile_owner = $a->profile['uid'];
 		$page_writeable = can_write_wall($a,$profile_owner);
-		$live_update_div = '<div id="live-display"></div>' . "\r\n";
+		if(!$update) {
+			$live_update_div = '<div id="live-display"></div>' . "\r\n"
+				. "<script> var profile_uid = " . $_SESSION['uid'] . ";"
+				. " var profile_page = 1; </script>";
+		}
 	}
 	else if($mode === 'community') {
 		$profile_owner = 0;
@@ -681,7 +686,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 		'$mode' => $mode,
 		'$user' => $a->user,
 		'$threads' => $threads,
-		'$dropping' => ($page_dropping?t('Delete Selected Items'):False),
+		'$dropping' => ($page_dropping && feature_enabled(local_user(),'multi_delete') ? t('Delete Selected Items') : False),
 	));
 
 	return $o;
@@ -860,11 +865,15 @@ function format_like($cnt,$arr,$type,$id) {
 		$total = count($arr);
 		if($total >= MAX_LIKERS)
 			$arr = array_slice($arr, 0, MAX_LIKERS - 1);
-		if($total < MAX_LIKERS)
-			$arr[count($arr)-1] = t('and') . ' ' . $arr[count($arr)-1];
-		$str = implode(', ', $arr);
-		if($total >= MAX_LIKERS)
+		if($total < MAX_LIKERS) {
+			$last = t('and') . ' ' . $arr[count($arr)-1];
+			$arr2 = array_slice($arr, 0, -1);
+			$str = implode(', ', $arr2) . ' ' . $last;
+		}
+		if($total >= MAX_LIKERS) {
+			$str = implode(', ', $arr);
 			$str .= sprintf( t(', and %d other people'), $total - MAX_LIKERS );
+		}
 		$str = (($type === 'like') ? sprintf( t('%s like this.'), $str) : sprintf( t('%s don\'t like this.'), $str));
 		$o .= "\t" . '<div id="' . $type . 'list-' . $id . '" style="display: none;" >' . $str . '</div>';
 	}
@@ -878,9 +887,12 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 
 	$geotag = (($x['allow_location']) ? get_markup_template('jot_geotag.tpl') : '');
 
-	$plaintext = false;
-	if(local_user() && intval(get_pconfig(local_user(),'system','plaintext')))
-		$plaintext = true;
+/*	$plaintext = false;
+	if( local_user() && (intval(get_pconfig(local_user(),'system','plaintext')) || !feature_enabled(local_user(),'richtext')) )
+		$plaintext = true;*/
+	$plaintext = true;
+	if( local_user() && feature_enabled(local_user(),'richtext') )
+		$plaintext = false;
 
 	$tpl = get_markup_template('jot-header.tpl');
 	$a->page['htmlhead'] .= replace_macros($tpl, array(
@@ -895,7 +907,8 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$audurl' => t("Please enter an audio link/URL:"),
 		'$term' => t('Tag term:'),
 		'$fileas' => t('Save to Folder:'),
-		'$whereareu' => t('Where are you right now?')
+		'$whereareu' => t('Where are you right now?'),
+		'$delitems' => t('Delete item(s)?')
 	));
 
 
@@ -948,7 +961,7 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 	if($notes_cid)
 		$jotnets .= '<input type="hidden" name="contact_allow[]" value="' . $notes_cid .'" />';
 
-	$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));
+//	$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));
 
 	$o .= replace_macros($tpl,array(
 		'$return_path' => $a->query_string,
@@ -971,7 +984,7 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$title' => "",
 		'$placeholdertitle' => t('Set title'),
 		'$category' => "",
-		'$placeholdercategory' => t('Categories (comma-separated list)'),
+		'$placeholdercategory' => (feature_enabled(local_user(),'categories') ? t('Categories (comma-separated list)') : ''),
 		'$wait' => t('Please wait'),
 		'$permset' => t('Permission settings'),
 		'$shortpermset' => t('permissions'),
@@ -990,9 +1003,11 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$acl' => $x['acl'],
 		'$bang' => $x['bang'],
 		'$profile_uid' => $x['profile_uid'],
-		'$preview' => t('Preview'),
+		'$preview' => ((feature_enabled($x['profile_uid'],'preview')) ? t('Preview') : ''),
+		'$jotplugins' => $jotplugins,
 		'$sourceapp' => t($a->sourcename),
-		'$cancel' => t('Cancel')
+		'$cancel' => t('Cancel'),
+		'$rand_num' => random_digits(12)
 	));
 
 
@@ -1007,9 +1022,10 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 
 function get_item_children($arr, $parent) {
 	$children = array();
+	$a = get_app();
 	foreach($arr as $item) {
 		if($item['id'] != $item['parent']) {
-			if(get_config('system','thread_allow')) {
+			if(get_config('system','thread_allow') && $a->theme_thread_allow) {
 				// Fallback to parent-uri if thr-parent is not set
 				$thr_parent = $item['thr-parent'];
 				if($thr_parent == '')

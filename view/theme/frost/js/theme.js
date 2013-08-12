@@ -508,14 +508,14 @@ function insertFormatting(comment,BBcode,id) {
 		textarea.focus();
 		selected = document.selection.createRange();
 		if (BBcode == "url"){
-			selected.text = "["+BBcode+"]" + "http://" +  selected.text + "[/"+BBcode+"]";
+			selected.text = "["+BBcode+"=http://]" +  selected.text + "[/"+BBcode+"]";
 			} else			
 		selected.text = "["+BBcode+"]" + selected.text + "[/"+BBcode+"]";
 	} else if (textarea.selectionStart || textarea.selectionStart == "0") {
 		var start = textarea.selectionStart;
 		var end = textarea.selectionEnd;
 		if (BBcode == "url"){
-			textarea.value = textarea.value.substring(0, start) + "["+BBcode+"]" + "http://" + textarea.value.substring(start, end) + "[/"+BBcode+"]" + textarea.value.substring(end, textarea.value.length);
+			textarea.value = textarea.value.substring(0, start) + "["+BBcode+"=http://]" + textarea.value.substring(start, end) + "[/"+BBcode+"]" + textarea.value.substring(end, textarea.value.length);
 			} else
 		textarea.value = textarea.value.substring(0, start) + "["+BBcode+"]" + textarea.value.substring(start, end) + "[/"+BBcode+"]" + textarea.value.substring(end, textarea.value.length);
 	}
@@ -582,17 +582,6 @@ function qCommentInsert(obj,id) {
 	ins = ins.replace("&quot;",'"');
 	$j("#comment-edit-text-" + id).val(tmpStr + ins);
 	$j(obj).val("");
-}
-
-function showHideComments(id) {
-	if( $j("#collapsed-comments-" + id).is(":visible")) {
-		$j("#collapsed-comments-" + id).hide();
-		$j("#hide-comments-" + id).html(window.showMore);
-	}
-	else {
-		$j("#collapsed-comments-" + id).show();
-		$j("#hide-comments-" + id).html(window.showFewer);
-	}
 }
 
 /*function showHideCommentBox(id) {
@@ -900,22 +889,26 @@ function wallInitEditor() {
 		$j("#prvmail-text").contact_autocomplete(baseurl+"/acl");
 }
 
-function deleteCheckedItems() {
-	var checkedstr = '';
+function deleteCheckedItems(delID) {
+	if(confirm(window.delItems)) {
+		var checkedstr = '';
 
-	$j('.item-select').each( function() {
-		if($j(this).is(':checked')) {
-			if(checkedstr.length != 0) {
-				checkedstr = checkedstr + ',' + $j(this).val();
-			}
-			else {
-				checkedstr = $j(this).val();
-			}
-		}	
-	});
-	$j.post('item', { dropitems: checkedstr }, function(data) {
-		window.location.reload();
-	});
+		$j(delID).hide();
+		$j(delID + '-rotator').show();
+		$j('.item-select').each( function() {
+			if($j(this).is(':checked')) {
+				if(checkedstr.length != 0) {
+					checkedstr = checkedstr + ',' + $j(this).val();
+				}
+				else {
+					checkedstr = $j(this).val();
+				}
+			}	
+		});
+		$j.post('item', { dropitems: checkedstr }, function(data) {
+			window.location.reload();
+		});
+	}
 }
 
 

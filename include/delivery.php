@@ -3,7 +3,7 @@ require_once("boot.php");
 require_once('include/queue_fn.php');
 require_once('include/html2plain.php');
 
-function delivery_run($argv, $argc){
+function delivery_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)){
@@ -323,7 +323,7 @@ function delivery_run($argv, $argc){
 						WHERE `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 						AND `contact`.`network` = '%s' AND `user`.`nickname` = '%s'
 						$sql_extra
-						AND `user`.`account_expired` = 0 LIMIT 1",
+						AND `user`.`account_expired` = 0 AND `user`.`account_removed` = 0 LIMIT 1",
 						dbesc(NETWORK_DFRN),
 						dbesc($nickname)
 					);

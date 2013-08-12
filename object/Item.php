@@ -93,6 +93,7 @@ class Item extends BaseObject {
 		$star = false;
 		$isstarred = "unstarred";
 		$indent = '';
+		$shiny = '';
 		$osparkle = '';
 		$total_children = $this->count_descendants();
 
@@ -112,7 +113,7 @@ class Item extends BaseObject {
 
 		$drop = array(
 			'dropping' => $dropping,
-			'pagedrop' => $item['pagedrop'],
+			'pagedrop' => ((feature_enabled($conv->get_profile_owner(),'multi_delete')) ? $item['pagedrop'] : ''),
 			'select' => t('Select'), 
 			'delete' => t('Delete'),
 		);
@@ -183,9 +184,14 @@ class Item extends BaseObject {
 					'classdo' => (($item['starred']) ? "hidden" : ""),
 					'classundo' => (($item['starred']) ? "" : "hidden"),
 					'starred' =>  t('starred'),
-					'tagger' => t("add tag"),
-					'classtagger' => "",
 				);
+				$tagger = '';
+				if(feature_enabled($conv->get_profile_owner(),'commtag')) {
+					$tagger = array(
+						'add' => t("add tag"),
+						'class' => "",
+					);
+				}
 			}
 		} else {
 			$indent = 'comment';
@@ -194,13 +200,14 @@ class Item extends BaseObject {
 		if($conv->is_writable()) {
 			$buttons = array(
 				'like' => array( t("I like this \x28toggle\x29"), t("like")),
-				'dislike' => array( t("I don't like this \x28toggle\x29"), t("dislike")),
+				'dislike' => ((feature_enabled($conv->get_profile_owner(),'dislike')) ? array( t("I don't like this \x28toggle\x29"), t("dislike")) : ''),
 			);
 			if ($shareable) $buttons['share'] = array( t('Share this'), t('share'));
 		}
 
-		if(strcmp(datetime_convert('UTC','UTC',$item['created']),datetime_convert('UTC','UTC','now - 12 hours')) > 0)
-			$indent .= ' shiny';
+		if(strcmp(datetime_convert('UTC','UTC',$item['created']),datetime_convert('UTC','UTC','now - 12 hours')) > 0){
+			$shiny = 'shiny';
+		}
 
 		localize_item($item);
 
@@ -227,6 +234,7 @@ class Item extends BaseObject {
 			'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 			'olinktitle' => sprintf( t('View %s\'s profile @ %s'), $this->get_owner_name(), ((strlen($item['owner-link'])) ? $item['owner-link'] : $item['url'])),
 			'to' => t('to'),
+			'via' => t('via'),
 			'wall' => t('Wall-to-Wall'),
 			'vwall' => t('via Wall-To-Wall:'),
 			'profile_url' => $profile_link,
@@ -241,18 +249,21 @@ class Item extends BaseObject {
 			'lock' => $lock,
 			'location' => template_escape($location),
 			'indent' => $indent,
+			'shiny' => $shiny,
 			'owner_url' => $this->get_owner_url(),
 			'owner_photo' => $this->get_owner_photo(),
 			'owner_name' => template_escape($this->get_owner_name()),
 			'plink' => get_plink($item),
-			'edpost' => $edpost,
+			'edpost'    => ((feature_enabled($conv->get_profile_owner(),'edit_posts')) ? $edpost : ''),
 			'isstarred' => $isstarred,
-			'star' => $star,
-			'filer' => $filer,
+			'star'      => ((feature_enabled($conv->get_profile_owner(),'star_posts')) ? $star : ''),
+			'tagger'	=> $tagger,
+			'filer'     => ((feature_enabled($conv->get_profile_owner(),'filing')) ? $filer : ''),
 			'drop' => $drop,
 			'vote' => $buttons,
 			'like' => $like,
-			'dislike' => $dislike,
+			'dislike'   => $dislike,
+			'switchcomment' => t('Comment'),
 			'comment' => $this->get_comment_box($indent),
 			'previewing' => ($conv->is_preview() ? ' preview ' : ''),
 			'wait' => t('Please wait'),
@@ -519,7 +530,8 @@ class Item extends BaseObject {
 	 *      _ false on failure
 	 */
 	private function get_comment_box($indent) {
-		if(!$this->is_toplevel() && !get_config('system','thread_allow')) {
+		$a = $this->get_app();
+		if(!$this->is_toplevel() && !(get_config('system','thread_allow') && $a->theme_thread_allow)) {
 			return '';
 		}
 		
@@ -531,7 +543,6 @@ class Item extends BaseObject {
 			$ww = 'ww';
 
 		if($conv->is_writable() && $this->is_writable()) {
-			$a = $this->get_app();
 			$qc = $qcomment =  null;
 
 			/*
@@ -545,7 +556,8 @@ class Item extends BaseObject {
 			$comment_box = replace_macros($template,array(
 				'$return_path' => '',
 				'$threaded' => $this->is_threaded(),
-				'$jsreload' => (($conv->get_mode() === 'display') ? $_SESSION['return_url'] : ''),
+//				'$jsreload' => (($conv->get_mode() === 'display') ? $_SESSION['return_url'] : ''),
+				'$jsreload' => '',
 				'$type' => (($conv->get_mode() === 'profile') ? 'wall-comment' : 'net-comment'),
 				'$id' => $this->get_id(),
 				'$parent' => $this->get_id(),
@@ -564,10 +576,11 @@ class Item extends BaseObject {
 				'$edimg' => t('Image'),
 				'$edurl' => t('Link'),
 				'$edvideo' => t('Video'),
-				'$preview' => t('Preview'),
+				'$preview' => ((feature_enabled($conv->get_profile_owner(),'preview')) ? t('Preview') : ''),
 				'$indent' => $indent,
 				'$sourceapp' => t($a->sourcename),
-				'$ww' => (($conv->get_mode() === 'network') ? $ww : '')
+				'$ww' => (($conv->get_mode() === 'network') ? $ww : ''),
+				'$rand_num' => random_digits(12)
 			));
 		}
 

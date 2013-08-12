@@ -336,11 +336,18 @@ function sanitise_acl(&$item) {
 
 
 // Convert an ACL array to a storable string
+// Normally ACL permissions will be an array.
+// We'll also allow a comma-separated string.
 
 if(! function_exists('perms2str')) {
 function perms2str($p) {
 	$ret = '';
-	$tmp = $p;
+
+	if(is_array($p))
+		$tmp = $p;
+	else
+		$tmp = explode(',',$p);
+
 	if(is_array($tmp)) {
 		array_walk($tmp,'sanitise_acl');
 		$ret = implode('',$tmp);
@@ -955,13 +962,11 @@ if(! function_exists('prepare_body')) {
 function prepare_body($item,$attach = false) {
 
 	$a = get_app();
-	call_hooks('prepare_body_init', $item); 
+	call_hooks('prepare_body_init', $item);
 
-	$cache = get_config('system','itemcache');
+	$cachefile = get_cachefile($item["guid"]."-".strtotime($item["edited"])."-".hash("crc32", $item['body']));
 
-	if (($cache != '')) {
-		$cachefile = $cache."/".$item["guid"]."-".strtotime($item["edited"])."-".hash("crc32", $item['body']);
-
+	if (($cachefile != '')) {
 		if (file_exists($cachefile))
 			$s = file_get_contents($cachefile);
 		else {

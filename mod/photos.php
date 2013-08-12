@@ -29,6 +29,12 @@ function photos_init(&$a) {
 
 		$a->data['user'] = $r[0];
 
+		$o .= '<div class="vcard">';
+		$o .= '<div class="fn">' . $a->data['user']['username'] . '</div>';
+		$o .= '<div id="profile-photo-wrapper"><img class="photo" style="width: 175px; height: 175px;" src="' . $a->get_cached_avatar_image($a->get_baseurl() . '/photo/profile/' . $a->data['user']['uid'] . '.jpg') . '" alt="' . $a->data['user']['username'] . '" /></div>';
+		$o .= '</div>';
+
+
 		$sql_extra = permissions_sql($a->data['user']['uid']);
 
 		$albums = q("SELECT distinct(`album`) AS `album` FROM `photo` WHERE `uid` = %d $sql_extra order by created desc",
@@ -37,11 +43,6 @@ function photos_init(&$a) {
 
 		if(count($albums)) {
 			$a->data['albums'] = $albums;
-
-			$o .= '<div class="vcard">';
-			$o .= '<div class="fn">' . $a->data['user']['username'] . '</div>';
-			$o .= '<div id="profile-photo-wrapper"><img class="photo" style="width: 175px; height: 175px;" src="' . $a->get_cached_avatar_image($a->get_baseurl() . '/photo/profile/' . $a->data['user']['uid'] . '.jpg') . '" alt="' . $a->data['user']['username'] . '" /></div>';
-			$o .= '</div>';
 
 			$albums_visible = ((intval($a->data['user']['hidewall']) && (! local_user()) && (! remote_user())) ? false : true);	
 
@@ -603,7 +604,7 @@ function photos_post(&$a) {
 					$arr['tag']           = $tagged[4];
 					$arr['inform']        = $tagged[2];
 					$arr['origin']        = 1;
-					$arr['body']          = '[url=' . $tagged[1] . ']' . $tagged[0] . '[/url]' . ' ' . t('was tagged in a') . ' ' . '[url=' . $a->get_baseurl() . '/photos/' . $owner_record['nickname'] . '/image/' . $p[0]['resource-id'] . ']' . t('photo') . '[/url]' . ' ' . t('by') . ' ' . '[url=' . $owner_record['url'] . ']' . $owner_record['name'] . '[/url]' ;
+					$arr['body']          = sprintf( t('%1$s was tagged in %2$s by %3$s'), '[url=' . $tagged[1] . ']' . $tagged[0] . '[/url]', '[url=' . $a->get_baseurl() . '/photos/' . $owner_record['nickname'] . '/image/' . $p[0]['resource-id'] . ']' . t('a photo') . '[/url]', '[url=' . $owner_record['url'] . ']' . $owner_record['name'] . '[/url]') ;
 					$arr['body'] .= "\n\n" . '[url=' . $a->get_baseurl() . '/photos/' . $owner_record['nickname'] . '/image/' . $p[0]['resource-id'] . ']' . '[img]' . $a->get_baseurl() . "/photo/" . $p[0]['resource-id'] . '-' . $best . '.' . $ext . '[/img][/url]' . "\n" ;
 
 					$arr['object'] = '<object><type>' . ACTIVITY_OBJ_PERSON . '</type><title>' . $tagged[0] . '</title><id>' . $tagged[1] . '/' . $tagged[0] . '</id>';
@@ -1026,19 +1027,15 @@ function photos_content(&$a) {
 		$default_upload = '<input id="photos-upload-choose" type="file" name="userfile" /> 	<div class="photos-upload-submit-wrapper" >
 		<input type="submit" name="submit" value="' . t('Submit') . '" id="photos-upload-submit" /> </div>';
 
-
-		$r = q("select sum(octet_length(data)) as total from photo where uid = %d and scale = 0 and album != 'Contact Photos' ",
-			intval($a->data['user']['uid'])
-		);
-
-
+		$usage_message = '';
 		$limit = service_class_fetch($a->data['user']['uid'],'photo_upload_limit');
 		if($limit !== false) {
+
+			$r = q("select sum(datasize) as total from photo where uid = %d and scale = 0 and album != 'Contact Photos' ",
+				intval($a->data['user']['uid'])
+			);
 			$usage_message = sprintf( t("You have used %1$.2f Mbytes of %2$.2f Mbytes photo storage."), $r[0]['total'] / 1024000, $limit / 1024000 );
 		}
-		else {
-			$usage_message = sprintf( t('You have used %1$.2f Mbytes of photo storage.'), $r[0]['total'] / 1024000 );
- 		}
 
 
 		$tpl = get_markup_template('photos_upload.tpl');
@@ -1406,7 +1403,8 @@ function photos_content(&$a) {
 							'$submit' => t('Submit'),
 							'$preview' => t('Preview'),
 							'$sourceapp' => t($a->sourcename),
-							'$ww' => ''
+							'$ww' => '',
+							'$rand_num' => random_digits(12)
 						));
 					}
 				}
@@ -1449,7 +1447,8 @@ function photos_content(&$a) {
 							'$submit' => t('Submit'),
 							'$preview' => t('Preview'),
 							'$sourceapp' => t($a->sourcename),
-							'$ww' => ''
+							'$ww' => '',
+							'$rand_num' => random_digits(12)
 						));
 					}
 				}
@@ -1520,7 +1519,8 @@ function photos_content(&$a) {
 								'$submit' => t('Submit'),
 								'$preview' => t('Preview'),
 								'$sourceapp' => t($a->sourcename),
-								'$ww' => ''
+								'$ww' => '',
+								'$rand_num' => random_digits(12)
 							));
 						}
 					}

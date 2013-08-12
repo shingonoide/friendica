@@ -99,7 +99,7 @@ if(! function_exists('post_url')) {
 function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) {
 	$a = get_app();
 	$ch = curl_init($url);
-	if(($redirects > 8) || (! $ch)) 
+	if(($redirects > 8) || (! $ch))
 		return false;
 
 	curl_setopt($ch, CURLOPT_HEADER, true);
@@ -823,15 +823,13 @@ function scale_external_images($s, $include_link = true, $scale_replace = false)
 				$scaled = $mtch[1];
 			$i = fetch_url($scaled);
 
-			$cache = get_config('system','itemcache');
-			if (($cache != '') and is_dir($cache)) {
-				$cachefile = $cache."/".hash("md5", $scaled);
+			$cachefile = get_cachefile(hash("md5", $scaled));
+			if ($cachefile != '')
 				file_put_contents($cachefile, $i);
-			}
 
 			// guess mimetype from headers or filename
 			$type = guess_image_type($mtch[1],true);
-			
+
 			if($i) {
 				$ph = new Photo($i, $type);
 				if($ph->is_valid()) {

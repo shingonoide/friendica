@@ -2,6 +2,7 @@
 
 require_once('include/Contact.php');
 require_once('include/socgraph.php');
+require_once('include/contact_selectors.php');
 
 function contacts_init(&$a) {
 	if(! local_user())
@@ -211,6 +212,9 @@ function contacts_content(&$a) {
 				intval($contact_id),
 				intval(local_user())
 			);
+			if ($archived) {
+				q("UPDATE `item` SET `private` = 2 WHERE `contact-id` = %d AND `uid` = %d", intval($contact_id), intval(local_user()));
+			}
 			if($r) {
 				//notice( t('Contact has been ') . (($archived) ? t('archived') : t('unarchived')) . EOL );
 				info( (($archived) ? t('Contact has been archived') : t('Contact has been unarchived')) . EOL );

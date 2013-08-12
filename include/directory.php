@@ -1,7 +1,7 @@
 <?php
 require_once("boot.php");
 
-function directory_run($argv, $argc){
+function directory_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)) {
@@ -38,6 +38,7 @@ function directory_run($argv, $argc){
 
 	call_hooks('globaldir_update', $arr);
 
+	logger('Updating directory: ' . $arr['url'], LOGGER_DEBUG);
 	if(strlen($arr['url']))
 		fetch_url($dir . '?url=' . bin2hex($arr['url']));
 

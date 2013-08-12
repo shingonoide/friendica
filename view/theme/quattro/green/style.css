@@ -648,26 +648,34 @@ ul.menu-popup .toolbar a:hover {
   background-color: #ffffff;
 }
 /* autocomplete popup */
+.autocomplete,
 .acpopup {
   max-height: 150px;
   background-color: #ffffff;
   color: #2d2d2d;
-  border: 1px solid #MenuBorder;
+  border: 1px solid #364e59;
   overflow: auto;
   z-index: 100000;
   -webkit-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
   -moz-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
   box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
 }
+.autocomplete > div,
 .acpopupitem {
   color: #2d2d2d;
   padding: 4px;
   clear: left;
+  overflow: auto;
+  height: auto;
 }
+.autocomplete > div img,
 .acpopupitem img {
   float: left;
   margin-right: 4px;
+  width: 16px !important;
+  height: 16px !important;
 }
+.autocomplete > div.selected,
 .acpopupitem.selected {
   background-color: #ccff42;
 }
@@ -983,7 +991,7 @@ section {
   word-wrap: break-word;
 }
 .wall-item-container .wall-item-content img {
-  max-width: 710px;
+  max-width: 700px;
 }
 .wall-item-container .wall-item-links,
 .wall-item-container .wall-item-actions {
@@ -1049,6 +1057,34 @@ section {
 }
 .wall-item-container.comment .wall-item-links {
   padding-left: 12px;
+}
+.wall-item-container.comment .commentbox {
+  height: 0px;
+  overflow: hidden;
+  -webkit-transition: all 0.2s ease-in-out;
+  -moz-transition: all 0.2s ease-in-out;
+  -o-transition: all 0.2s ease-in-out;
+  -ms-transition: all 0.2s ease-in-out;
+  transition: all 0.2s ease-in-out;
+}
+.wall-item-container.comment .commentbox .wall-item-comment-wrapper {
+  border-top: 1px solid #999999;
+  height: 0px;
+  overflow: hidden;
+}
+.wall-item-container.comment:hover .commentbox {
+  height: auto;
+  overflow: visible;
+  -webkit-transition: all 0.2s ease-in-out;
+  -moz-transition: all 0.2s ease-in-out;
+  -o-transition: all 0.2s ease-in-out;
+  -ms-transition: all 0.2s ease-in-out;
+  transition: all 0.2s ease-in-out;
+}
+.wall-item-container.comment:hover .commentbox .wall-item-comment-wrapper {
+  border-top: 0px;
+  height: auto;
+  overflow: visible;
 }
 /* 'tag' item type */
 .wall-item-container.item-tag .wall-item-content {

@@ -9,12 +9,12 @@ require_once('include/pgettext.php');
 require_once('include/nav.php');
 require_once('include/cache.php');
 require_once('library/Mobile_Detect/Mobile_Detect.php');
+require_once('include/features.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.0.1508' );
+define ( 'FRIENDICA_VERSION',      '3.1.1743' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
-define ( 'DB_UPDATE_VERSION',      1156      );
-
+define ( 'DB_UPDATE_VERSION',      1163      );
 define ( 'EOL',                    "<br />\r\n"     );
 define ( 'ATOM_TIME',              'Y-m-d\TH:i:s\Z' );
 
@@ -203,10 +203,12 @@ define ( 'NOTIFY_SYSTEM',   0x8000 );
 
 define ( 'TERM_UNKNOWN',   0 );
 define ( 'TERM_HASHTAG',   1 );
-define ( 'TERM_MENTION',   2 );   
+define ( 'TERM_MENTION',   2 );
 define ( 'TERM_CATEGORY',  3 );
 define ( 'TERM_PCATEGORY', 4 );
 define ( 'TERM_FILE',      5 );
+define ( 'TERM_SAVEDSEARCH', 6 );
+define ( 'TERM_CONVERSATION', 7 );
 
 define ( 'TERM_OBJ_POST',  1 );
 define ( 'TERM_OBJ_PHOTO', 2 );
@@ -354,23 +356,49 @@ if(! class_exists('App')) {
 		public  $identities;
 		public	$is_mobile;
 		public	$is_tablet;
-	
+		public	$performance = array();
+
 		public $nav_sel;
 
 		public $category;
 
+
 		// Allow themes to control internal parameters
 		// by changing App values in theme.php
-		//
-		// Possibly should make these part of the plugin
-		// system, but it seems like overkill to invoke
-		// all the plugin machinery just to change a couple
-		// of values
+
 		public	$sourcename = '';
 		public	$videowidth = 425;
 		public	$videoheight = 350;
 		public	$force_max_items = 0;
 		public	$theme_thread_allow = true;
+
+		// An array for all theme-controllable parameters
+		// Mostly unimplemented yet. Only options 'stylesheet' and
+		// beyond are used.
+
+		public	$theme = array(
+			'sourcename' => '',
+			'videowidth' => 425,
+			'videoheight' => 350,
+			'force_max_items' => 0,
+			'thread_allow' => true,
+			'stylesheet' => '',
+			'template_engine' => 'smarty3',
+		);
+		
+		// array of registered template engines ('name'=>'class name')
+		public $template_engines = array();
+		// array of instanced template engines ('name'=>'instance')
+		public $template_engine_instance = array();
+
+		private $ldelim = array(
+			'internal' => '',
+			'smarty3' => '{{'
+		);
+		private $rdelim = array(
+			'internal' => '',
+			'smarty3' => '}}'
+		);
 
 		private $scheme;
 		private $hostname;
@@ -378,18 +406,28 @@ if(! class_exists('App')) {
 		private $db;
 
 		private $curl_code;
+		private $curl_content_type;
 		private $curl_headers;
 
 		private $cached_profile_image;
 		private $cached_profile_picdate;
-							
+
 		function __construct() {
 
-			global $default_timezone;
+			global $default_timezone, $argv, $argc;
 
 			$this->timezone = ((x($default_timezone)) ? $default_timezone : 'UTC');
 
 			date_default_timezone_set($this->timezone);
+
+			$this->performance["start"] = microtime(true);
+			$this->performance["database"] = 0;
+			$this->performance["network"] = 0;
+			$this->performance["file"] = 0;
+			$this->performance["rendering"] = 0;
+			$this->performance["parser"] = 0;
+			$this->performance["marktime"] = 0;
+			$this->performance["markstart"] = microtime(true);
 
 			$this->config = array();
 			$this->page = array();
@@ -398,6 +436,14 @@ if(! class_exists('App')) {
 			$this->query_string = '';
 
 			startup();
+
+			set_include_path(
+					'include' . PATH_SEPARATOR
+					. 'library' . PATH_SEPARATOR
+					. 'library/phpsec' . PATH_SEPARATOR
+					. 'library/langdet' . PATH_SEPARATOR
+					. '.' );
+
 
 			$this->scheme = 'http';
 			if(x($_SERVER,'HTTPS') && $_SERVER['HTTPS'])
@@ -428,15 +474,13 @@ if(! class_exists('App')) {
 				if(isset($path) && strlen($path) && ($path != $this->path))
 					$this->path = $path;
 			}
+			if (is_array($argv) && $argc>1 && substr(end($argv), 0, 4)=="http" ) {
+				$this->set_baseurl(array_pop($argv) );
+				$argc --;
+			}
 
-			set_include_path(
-					"include/$this->hostname" . PATH_SEPARATOR
-					. 'include' . PATH_SEPARATOR
-					. 'library' . PATH_SEPARATOR
-					. 'library/phpsec' . PATH_SEPARATOR
-					. 'library/langdet' . PATH_SEPARATOR
-					. '.' );
-
+			set_include_path("include/$this->hostname" . PATH_SEPARATOR . get_include_path());
+            
 			if((x($_SERVER,'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'],0,2) === "q=") {
 				$this->query_string = substr($_SERVER['QUERY_STRING'],2);
 				// removing trailing / - maybe a nginx problem
@@ -502,6 +546,30 @@ if(! class_exists('App')) {
 			$mobile_detect = new Mobile_Detect();
 			$this->is_mobile = $mobile_detect->isMobile();
 			$this->is_tablet = $mobile_detect->isTablet();
+			
+			/**
+			 * register template engines
+			 */
+			$dc = get_declared_classes();
+			foreach ($dc as $k) {
+				if (in_array("ITemplateEngine", class_implements($k))){
+					$this->register_template_engine($k);
+				}
+			}
+			
+		}
+
+		function get_basepath() {
+
+			$basepath = get_config("system", "basepath");
+
+			if ($basepath == "")
+				$basepath = $_SERVER["DOCUMENT_ROOT"];
+
+			if ($basepath == "")
+				$basepath = $_SERVER["PWD"];
+
+			return($basepath);
 		}
 
 		function get_baseurl($ssl = false) {
@@ -567,7 +635,11 @@ if(! class_exists('App')) {
 		function set_pager_itemspage($n) {
 			$this->pager['itemspage'] = ((intval($n) > 0) ? intval($n) : 0);
 			$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
-
+		}
+		
+		function set_pager_page($n) {
+			$this->pager['page'] = $n;
+			$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
 		}
 
 		function init_pagehead() {
@@ -576,6 +648,23 @@ if(! class_exists('App')) {
 				$interval = 40000;
 
 			$this->page['title'] = $this->config['sitename'];
+
+			/* put the head template at the beginning of page['htmlhead']
+			 * since the code added by the modules frequently depends on it
+			 * being first
+			 */
+			if(!isset($this->page['htmlhead']))
+				$this->page['htmlhead'] = '';
+
+			// If we're using Smarty, then doing replace_macros() will replace
+			// any unrecognized variables with a blank string. Since we delay
+			// replacing $stylesheet until later, we need to replace it now
+			// with another variable name
+			if($this->theme['template_engine'] === 'smarty3')
+				$stylesheet = $this->get_template_ldelim('smarty3') . '$stylesheet' . $this->get_template_rdelim('smarty3');
+			else
+				$stylesheet = '$stylesheet';
+
 			$tpl = get_markup_template('head.tpl');
 			$this->page['htmlhead'] = replace_macros($tpl,array(
 				'$baseurl' => $this->get_baseurl(), // FIXME for z_path!!!!
@@ -585,15 +674,18 @@ if(! class_exists('App')) {
 				'$comment' => t('Comment'),
 				'$showmore' => t('show more'),
 				'$showfewer' => t('show fewer'),
-				'$update_interval' => $interval
-			));
+				'$update_interval' => $interval,
+				'$stylesheet' => $stylesheet
+			)) . $this->page['htmlhead'];
 		}
 
 		function init_page_end() {
+			if(!isset($this->page['end']))
+				$this->page['end'] = '';
 			$tpl = get_markup_template('end.tpl');
 			$this->page['end'] = replace_macros($tpl,array(
 				'$baseurl' => $this->get_baseurl() // FIXME for z_path!!!!
-			));
+			)) . $this->page['end'];
 		}
 
 		function set_curl_code($code) {
@@ -602,6 +694,14 @@ if(! class_exists('App')) {
 
 		function get_curl_code() {
 			return $this->curl_code;
+		}
+
+		function set_curl_content_type($content_type) {
+			$this->curl_content_type = $content_type;
+		}
+
+		function get_curl_content_type() {
+			return $this->curl_content_type;
 		}
 
 		function set_curl_headers($headers) {
@@ -635,6 +735,94 @@ if(! class_exists('App')) {
 		}
 
 
+		/**
+		 * register template engine class
+		 * if $name is "", is used class static property $class::$name
+		 * @param string $class
+		 * @param string $name
+		 */
+		function register_template_engine($class, $name = '') {
+			if ($name===""){
+				$v = get_class_vars( $class );
+				if(x($v,"name")) $name = $v['name'];
+			}
+	 		if ($name===""){
+ 				echo "template engine <tt>$class</tt> cannot be registered without a name.\n";
+				killme(); 
+ 			}
+			$this->template_engines[$name] = $class;
+		}
+
+		/**
+		 * return template engine instance. If $name is not defined,
+		 * return engine defined by theme, or default
+		 * 
+		 * @param strin $name Template engine name
+		 * @return object Template Engine instance
+		 */
+		function template_engine($name = ''){
+			if ($name!=="") {
+				$template_engine = $name;
+			} else {
+				$template_engine = 'smarty3';
+				if (x($this->theme, 'template_engine')) {
+					$template_engine = $this->theme['template_engine'];
+				}
+			}
+			
+			if (isset($this->template_engines[$template_engine])){
+				if(isset($this->template_engine_instance[$template_engine])){
+					return $this->template_engine_instance[$template_engine];
+				} else {
+					$class = $this->template_engines[$template_engine];
+					$obj = new $class;
+					$this->template_engine_instance[$template_engine] = $obj;
+					return $obj;
+				}
+			}
+			
+			echo "template engine <tt>$template_engine</tt> is not registered!\n"; killme();
+		}
+
+		function get_template_engine() {
+			return $this->theme['template_engine'];
+		}
+
+		function set_template_engine($engine = 'smarty3') {
+			$this->theme['template_engine'] = $engine;
+			/*
+			$this->theme['template_engine'] = 'smarty3';
+
+			switch($engine) {
+				case 'smarty3':
+					if(is_writable('view/smarty3/'))
+						$this->theme['template_engine'] = 'smarty3';
+					break;
+				default:
+					break;
+			}
+			*/
+		}
+
+		function get_template_ldelim($engine = 'smarty3') {
+			return $this->ldelim[$engine];
+		}
+
+		function get_template_rdelim($engine = 'smarty3') {
+			return $this->rdelim[$engine];
+		}
+
+		function save_timestamp($stamp, $value) {
+			$duration = (float)(microtime(true)-$stamp);
+
+			$this->performance[$value] += (float)$duration;
+			$this->performance["marktime"] += (float)$duration;
+		}
+
+		function mark_timestamp($mark) {
+			//$this->performance["markstart"] -= microtime(true) - $this->performance["marktime"];
+			$this->performance["markstart"] = microtime(true) - $this->performance["markstart"] - $this->performance["marktime"];
+		}
 	}
 }
 
@@ -719,18 +907,26 @@ function is_ajax() {
 	return (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest');
 }
 
+function check_db() {
 
-// Primarily involved with database upgrade, but also sets the
-// base url for use in cmdline programs which don't have
-// $_SERVER variables, and synchronising the state of installed plugins.
+	$build = get_config('system','build');
+	if(! x($build)) {
+		set_config('system','build',DB_UPDATE_VERSION);
+		$build = DB_UPDATE_VERSION;
+	}
+	if($build != DB_UPDATE_VERSION)
+		proc_run('php', 'include/dbupdate.php');
+
+}
 
 
-if(! function_exists('check_config')) {
-	function check_config(&$a) {
 
-		$build = get_config('system','build');
-		if(! x($build))
-			$build = set_config('system','build',DB_UPDATE_VERSION);
+
+// Sets the base url for use in cmdline programs which don't have
+// $_SERVER variables
+
+if(! function_exists('check_url')) {
+	function check_url(&$a) {
 
 		$url = get_config('system','url');
 
@@ -745,6 +941,19 @@ if(! function_exists('check_config')) {
 		if((! link_compare($url,$a->get_baseurl())) && (! preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/",$a->get_hostname)))
 			$url = set_config('system','url',$a->get_baseurl());
 
+		return;
+	}
+}
+
+
+// Automatic database updates
+
+if(! function_exists('update_db')) {
+	function update_db(&$a) {
+
+		$build = get_config('system','build');
+		if(! x($build))
+			$build = set_config('system','build',DB_UPDATE_VERSION);
 
 		if($build != DB_UPDATE_VERSION) {
 			$stored = intval($build);
@@ -794,9 +1003,10 @@ if(! function_exists('check_config')) {
 									'$error' => sprintf( t('Update %s failed. See error logs.'), $x)
 								));
 								$subject=sprintf(t('Update Error at %s'), $a->get_baseurl());
-									
+								require_once('include/email.php');
+								$subject = email_header_encode($subject,'UTF-8');	
 								mail($a->config['admin_email'], $subject, $email_msg,
-									'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
+									'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
 									. 'Content-type: text/plain; charset=UTF-8' . "\n"
 									. 'Content-transfer-encoding: 8bit' );
 								//try the logger
@@ -812,6 +1022,14 @@ if(! function_exists('check_config')) {
 				}
 			}
 		}
+
+		return;
+	}
+}
+
+
+if(! function_exists('check_plugins')) {
+	function check_plugins(&$a) {
 
 		/**
 		 *
@@ -913,10 +1131,10 @@ if(! function_exists('login')) {
 
 			$tpl = get_markup_template("login.tpl");
 			$_SESSION['return_url'] = $a->query_string;
+			$a->module = 'login';
 		}
 
-
-		$o .= replace_macros($tpl,array(
+		$o .= replace_macros($tpl, array(
 
 			'$dest_url'     => $dest_url,
 			'$logout'       => t('Logout'),
@@ -924,6 +1142,7 @@ if(! function_exists('login')) {
 	
 			'$lname'	 	=> array('username', t('Nickname or Email address: ') , '', ''),
 			'$lpassword' 	=> array('password', t('Password: '), '', ''),
+			'$lremember'	=> array('remember', t('Remember me'), 0, ''),
 	
 			'$openid'		=> !$noid,
 			'$lopenid'      => array('openid_url', t('Or login using OpenID: '),'',''),
@@ -934,6 +1153,13 @@ if(! function_exists('login')) {
 	
 			'$lostpass'     => t('Forgot your password?'),
 			'$lostlink'     => t('Password Reset'),
+
+			'$tostitle'	=> t('Website Terms of Service'),
+			'$toslink'	=> t('terms of service'),
+
+			'$privacytitle'	=> t('Website Privacy Policy'),
+			'$privacylink'	=> t('privacy policy'),
+
 		));
 
 		call_hooks('login_hook',$o);
@@ -985,6 +1211,13 @@ if(! function_exists('remote_user')) {
 // a page is loaded. Usually used for errors or alerts.
 
 if(! function_exists('notice')) {
+	/**
+	 * Show an error message to user.
+	 * 
+	 * This function save text in session, to be shown to the user at next page load
+	 * 
+	 * @param string $s - Text of notice
+	 */
 	function notice($s) {
 		$a = get_app();
 		if(! x($_SESSION,'sysmsg'))	$_SESSION['sysmsg'] = array();
@@ -993,6 +1226,13 @@ if(! function_exists('notice')) {
 	}
 }
 if(! function_exists('info')) {
+	/**
+	 * Show an info message to user.
+	 * 
+	 * This function save text in session, to be shown to the user at next page load
+	 * 
+	 * @param string $s - Text of notice
+	 */
 	function info($s) {
 		$a = get_app();
 		if(! x($_SESSION,'sysmsg_info')) $_SESSION['sysmsg_info'] = array();
@@ -1031,6 +1271,10 @@ if(! function_exists('get_max_import_size')) {
  *
  * Profile information is placed in the App structure for later retrieval.
  * Honours the owner's chosen theme for display.
+ *
+ * IMPORTANT: Should only be run in the _init() functions of a module. That ensures that
+ * the theme is chosen before the _init() function of a theme is run, which will usually
+ * load a lot of theme-specific content
  *
  */
 
@@ -1091,7 +1335,7 @@ if(! function_exists('profile_load')) {
 
 		if(! $r[0]['is-default']) {
 			$x = q("select `pub_keywords` from `profile` where uid = %d and `is-default` = 1 limit 1",
-					intval($profile_uid)
+					intval($r[0]['profile_uid'])
 			);
 			if($x && count($x))
 				$r[0]['pub_keywords'] = $x[0]['pub_keywords'];
@@ -1099,7 +1343,7 @@ if(! function_exists('profile_load')) {
 
 		$a->profile = $r[0];
 
-		$a->profile['mobile-theme'] = get_pconfig($profile_uid, 'system', 'mobile_theme');
+		$a->profile['mobile-theme'] = get_pconfig($a->profile['profile_uid'], 'system', 'mobile_theme');
 
 
 		$a->page['title'] = $a->profile['name'] . " @ " . $a->config['sitename'];
@@ -1109,6 +1353,8 @@ if(! function_exists('profile_load')) {
 		/**
 		 * load/reload current theme info
 		 */
+
+		$a->set_template_engine(); // reset the template engine to the default in case the user's theme doesn't specify one
 
 		$theme_info_file = "view/theme/".current_theme()."/theme.php";
 		if (file_exists($theme_info_file)){
@@ -1185,7 +1431,7 @@ if(! function_exists('profile_sidebar')) {
 			}
 		}
 
-		if(get_my_url() && $profile['unkmail'])
+		if( get_my_url() && $profile['unkmail'] && ($profile['uid'] != local_user()) )
 			$wallmessage = t('Message');
 		else
 			$wallmessage = false;
@@ -1193,7 +1439,7 @@ if(! function_exists('profile_sidebar')) {
 
 
 		// show edit profile to yourself
-		if ($profile['uid'] == local_user()) {
+		if ($profile['uid'] == local_user() && feature_enabled(local_user(),'multi_profiles')) {
 			$profile['edit'] = array($a->get_baseurl(). '/profiles', t('Profiles'),"", t('Manage/edit profiles'));
 		
 			$r = q("SELECT * FROM `profile` WHERE `uid` = %d",
@@ -1222,9 +1468,15 @@ if(! function_exists('profile_sidebar')) {
 
 
 			}
-
-
 		}
+        if ($profile['uid'] == local_user() && !feature_enabled(local_user(),'multi_profiles')) {
+            $profile['edit'] = array($a->get_baseurl(). '/profiles/'.$profile['id'], t('Edit profile'),"", t('Edit profile'));
+        	$profile['menu'] = array(
+				'chg_photo' => t('Change profile photo'),
+				'cr_new' => null,
+				'entries' => array(),
+			);
+        }
 
 
 
@@ -1268,13 +1520,22 @@ if(! function_exists('profile_sidebar')) {
 		}
 
 
-		$tpl = get_markup_template('profile_vcard.tpl');
+		$p = array();
+		foreach($profile as $k => $v) {
+			$k = str_replace('-','_',$k);
+			$p[$k] = $v;
+		}
 
+		if($a->theme['template_engine'] === 'internal')
+			$location = template_escape($location);
+
+
+		$tpl = get_markup_template('profile_vcard.tpl');
 		$o .= replace_macros($tpl, array(
-			'$profile' => $profile,
+			'$profile' => $p,
 			'$connect'  => $connect,
 			'$wallmessage' => $wallmessage,
-			'$location' => template_escape($location),
+			'$location' => $location,
 			'$gender'   => $gender,
 			'$pdesc'	=> $pdesc,
 			'$marital'  => $marital,
@@ -1501,14 +1762,20 @@ if(! function_exists('proc_run')) {
 
 		if(count($args) && $args[0] === 'php')
 			$args[0] = ((x($a->config,'php_path')) && (strlen($a->config['php_path'])) ? $a->config['php_path'] : 'php');
-		for($x = 0; $x < count($args); $x ++)
+        
+        // add baseurl to args. cli scripts can't construct it
+        $args[] = $a->get_baseurl();
+        
+        for($x = 0; $x < count($args); $x ++)
 			$args[$x] = escapeshellarg($args[$x]);
+
+        
 
 		$cmdline = implode($args," ");
 		if(get_config('system','proc_windows'))
-			proc_close(proc_open('cmd /c start /b ' . $cmdline,array(),$foo));
+			proc_close(proc_open('cmd /c start /b ' . $cmdline,array(),$foo,dirname(__FILE__)));
 		else
-			proc_close(proc_open($cmdline." &",array(),$foo));
+			proc_close(proc_open($cmdline." &",array(),$foo,dirname(__FILE__)));
 	}
 }
 
@@ -1521,7 +1788,7 @@ if(! function_exists('current_theme')) {
 //		$mobile_detect = new Mobile_Detect();
 //		$is_mobile = $mobile_detect->isMobile() || $mobile_detect->isTablet();
 		$is_mobile = $a->is_mobile || $a->is_tablet;
-	
+
 		if($is_mobile) {
 			if(isset($_SESSION['show-mobile']) && !$_SESSION['show-mobile']) {
 				$system_theme = '';
@@ -1694,6 +1961,13 @@ if(! function_exists('profile_tabs')){
 				'title' => t('Photo Albums'),
 				'id' => 'photo-tab',
 			),
+			array(
+				'label' => t('Videos'),
+				'url'	=> $a->get_baseurl() . '/videos/' . $nickname,
+				'sel'	=> ((!isset($tab)&&$a->argv[0]=='videos')?'active':''),
+				'title' => t('Videos'),
+				'id' => 'video-tab',
+			),
 		);
 	
 		if ($is_owner){
@@ -1779,6 +2053,36 @@ function build_querystring($params, $name=null) {
     return $ret;    
 }
 
+function explode_querystring($query) {
+	$arg_st = strpos($query, '?');
+	if($arg_st !== false) {
+		$base = substr($query, 0, $arg_st);
+		$arg_st += 1;
+	}
+	else {
+		$base = '';
+		$arg_st = 0;
+	}
+
+	$args = explode('&', substr($query, $arg_st));
+	foreach($args as $k=>$arg) {
+		if($arg === '')
+			unset($args[$k]);
+	}
+	$args = array_values($args);
+
+	if(!$base) {
+		$base = $args[0];
+		unset($args[0]);
+		$args = array_values($args);
+	}
+
+	return array(
+		'base' => $base,
+		'args' => $args,
+	);
+}
+
 /**
 * Returns the complete URL of the current page, e.g.: http(s)://something.com/network
 *
@@ -1794,5 +2098,68 @@ function curPageURL() {
 		$pageURL .= $_SERVER["SERVER_NAME"].$_SERVER["REQUEST_URI"];
 	}
 	return $pageURL;
+}
+
+function random_digits($digits) {
+	$rn = '';
+	for($i = 0; $i < $digits; $i++) {
+		$rn .= rand(0,9);
+	}
+	return $rn;
+}
+
+function get_cachefile($file, $writemode = true) {
+	$cache = get_config("system","itemcache");
+
+	if ((! $cache) || (! is_dir($cache)))
+		return("");
+
+	$subfolder = $cache."/".substr($file, 0, 2);
+
+	$cachepath = $subfolder."/".$file;
+
+	if ($writemode) {
+		if (!is_dir($subfolder)) {
+			mkdir($subfolder);
+			chmod($subfolder, 0777);
+		}
+	}
+
+	return($cachepath);
+}
+
+function clear_cache($basepath = "", $path = "") {
+	if ($path == "") {
+		$basepath = get_config('system','itemcache');
+		$path = $basepath;
+	}
+
+	if (($path == "") OR (!is_dir($path)))
+		return;
+
+	if (substr(realpath($path), 0, strlen($basepath)) != $basepath)
+		return;
+
+	$cachetime = (int)get_config('system','itemcache_duration');
+	if ($cachetime == 0)
+		$cachetime = 86400;
+
+	if ($dh = opendir($path)) {
+		while (($file = readdir($dh)) !== false) {
+			$fullpath = $path."/".$file;
+			if ((filetype($fullpath) == "dir") and ($file != ".") and ($file != ".."))
+				clear_cache($basepath, $fullpath);
+			if ((filetype($fullpath) == "file") and (filectime($fullpath) < (time() - $cachetime)))
+				unlink($fullpath);
+		}
+		closedir($dh);
+	}
+}
+
+function set_template_engine(&$a, $engine = 'internal') {
+// This function is no longer necessary, but keep it as a wrapper to the class method
+// to avoid breaking themes again unnecessarily
+
+	$a->set_template_engine($engine);
 }
 

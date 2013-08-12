@@ -430,6 +430,9 @@ div.wall-item-content-wrapper.shiny {
 	height: 50px;
 }
 
+#login-submit-wrapper {
+	clear: both;
+}
 #login-submit-button {
 /*	margin-top: 10px; */
 	margin-left: 200px;
@@ -2134,6 +2137,15 @@ aside input[type='text'] {
 	margin-bottom: 15px;
 }
 
+.video-top-wrapper {
+	display: inline-block;
+	vertical-align: top;
+	margin-top: 15px;
+	margin-right: 15px;
+	margin-left: 15px;
+	margin-bottom: 15px;
+}
+
 #profile-jot-desc {
 	/*float: left;*/
 	width: 480px;
@@ -3134,6 +3146,7 @@ aside input[type='text'] {
 	display: block; width: 20px; height: 23px;
 	float: left;
 	background-image: url('../../../images/content-types.png');
+	background-position: -80px 0px;
 }
 
 .body-attach {
@@ -3294,4 +3307,15 @@ ul.menu-popup {
 
 #datebrowse-sidebar select {
 	margin-left: 25px;
+}
+
+#div_id_remember label {
+	width: 170px;
+}
+#div_id_remember input {
+	width: 20px;
+}
+
+.shared_header span {
+	margin-left: 10px;
 }

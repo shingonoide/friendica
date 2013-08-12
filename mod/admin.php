@@ -20,7 +20,7 @@ function admin_post(&$a){
 
 	if(x($_SESSION,'submanage') && intval($_SESSION['submanage']))
 		return;
-	
+
 
 
 	// urls
@@ -54,7 +54,7 @@ function admin_post(&$a){
 				}
 				info(t('Theme settings updated.'));
 				if(is_ajax()) return;
-				
+
 				goaway($a->get_baseurl(true) . '/admin/themes/' . $theme );
 				return;
 				break;
@@ -100,9 +100,9 @@ function admin_content(&$a) {
 		'dbsync' => Array($a->get_baseurl(true)."/admin/dbsync/", t('DB updates'), "dbsync"),
 		//'update' =>	Array($a->get_baseurl(true)."/admin/update/", t("Software Update") , "update")
 	);
-	
+
 	/* get plugins admin page */
-	
+
 	$r = q("SELECT * FROM `addon` WHERE `plugin_admin`=1");
 	$aside['plugins_admin']=Array();
 	foreach ($r as $h){
@@ -111,7 +111,7 @@ function admin_content(&$a) {
 		// temp plugins with admin
 		$a->plugins_admin[] = $plugin;
 	}
-		
+
 	$aside['logs'] = Array($a->get_baseurl(true)."/admin/logs/", t("Logs"), "logs");
 
 	$t = get_markup_template("admin_aside.tpl");
@@ -130,7 +130,6 @@ function admin_content(&$a) {
 	 * Page content
 	 */
 	$o = '';
-	
 	// urls
 	if ($a->argc > 1){
 		switch ($a->argv[1]){
@@ -161,7 +160,7 @@ function admin_content(&$a) {
 	} else {
 		$o = admin_page_summary($a);
 	}
-	
+
 	if(is_ajax()) {
 		echo $o; 
 		killme();
@@ -241,13 +240,14 @@ function admin_page_site_post(&$a){
 	$maximagesize		=	((x($_POST,'maximagesize'))		? intval(trim($_POST['maximagesize']))		:  0);
 	$maximagelength		=	((x($_POST,'maximagelength'))		? intval(trim($_POST['maximagelength']))	:  MAX_IMAGE_LENGTH);
 	$jpegimagequality	=	((x($_POST,'jpegimagequality'))		? intval(trim($_POST['jpegimagequality']))	:  JPEG_QUALITY);
-	
-	
+
+
 	$register_policy	=	((x($_POST,'register_policy'))		? intval(trim($_POST['register_policy']))	:  0);
+	$daily_registrations	=	((x($_POST,'max_daily_registrations'))	? intval(trim($_POST['max_daily_registrations']))	:0);
 	$abandon_days	    	=	((x($_POST,'abandon_days'))		? intval(trim($_POST['abandon_days']))		:  0);
 
-	$register_text		=	((x($_POST,'register_text'))		? notags(trim($_POST['register_text']))		: '');	
-	
+	$register_text		=	((x($_POST,'register_text'))		? notags(trim($_POST['register_text']))		: '');
+
 	$allowed_sites		=	((x($_POST,'allowed_sites'))		? notags(trim($_POST['allowed_sites']))		: '');
 	$allowed_email		=	((x($_POST,'allowed_email'))		? notags(trim($_POST['allowed_email']))		: '');
 	$block_public		=	((x($_POST,'block_public'))		? True						: False);
@@ -255,6 +255,10 @@ function admin_page_site_post(&$a){
 	$global_directory	=	((x($_POST,'directory_submit_url'))	? notags(trim($_POST['directory_submit_url']))	: '');
 	$thread_allow		=	((x($_POST,'thread_allow'))		? True						: False);
 	$newuser_private		=	((x($_POST,'newuser_private'))		? True						: False);
+	$enotify_no_content		=	((x($_POST,'enotify_no_content'))	? True						: False);
+	$private_addons			=	((x($_POST,'private_addons'))		? True						: False);
+	$disable_embedded		=	((x($_POST,'disable_embedded'))		? True						: False);
+	
 	$no_multi_reg		=	((x($_POST,'no_multi_reg'))		? True						: False);
 	$no_openid		=	!((x($_POST,'no_openid'))		? True						: False);
 	$no_regfullname		=	!((x($_POST,'no_regfullname'))		? True						: False);
@@ -270,9 +274,18 @@ function admin_page_site_post(&$a){
 	$maxloadavg		=	((x($_POST,'maxloadavg'))		? intval(trim($_POST['maxloadavg']))		: 50);
 	$dfrn_only		=	((x($_POST,'dfrn_only'))		? True						: False);
 	$ostatus_disabled	=	!((x($_POST,'ostatus_disabled'))	? True  					: False);
+	$ostatus_poll_interval	=	((x($_POST,'ostatus_poll_interval'))	? intval(trim($_POST['ostatus_poll_interval']))		:  0);
 	$diaspora_enabled	=	((x($_POST,'diaspora_enabled'))		? True   					: False);
 	$ssl_policy		=	((x($_POST,'ssl_policy'))		? intval($_POST['ssl_policy']) 			: 0);
-
+	$new_share		=	((x($_POST,'new_share'))		? True   					: False);
+	$hide_help		=	((x($_POST,'hide_help'))		? True   					: False);
+	$use_fulltext_engine	=	((x($_POST,'use_fulltext_engine'))	? True   					: False);
+	$itemcache		=	((x($_POST,'itemcache'))		? notags(trim($_POST['itemcache']))		: '');
+	$itemcache_duration	=	((x($_POST,'itemcache_duration'))	? intval($_POST['itemcache_duration'])		: 0);
+	$lockpath		=	((x($_POST,'lockpath'))			? notags(trim($_POST['lockpath']))		: '');
+	$temppath		=	((x($_POST,'temppath'))			? notags(trim($_POST['temppath']))		: '');
+	$basepath		=	((x($_POST,'basepath'))			? notags(trim($_POST['basepath']))		: '');
+	$singleuser		=	((x($_POST,'singleuser'))		? notags(trim($_POST['singleuser']))		: '');
 	if($ssl_policy != intval(get_config('system','ssl_policy'))) {
 		if($ssl_policy == SSL_POLICY_FULL) {
 			q("update `contact` set 
@@ -333,12 +346,18 @@ function admin_page_site_post(&$a){
 		del_config('system','mobile-theme');
 	} else {
 		set_config('system','mobile-theme', $theme_mobile);
-	}
+        }
+        if ( $singleuser === '---' ) {
+            del_config('system','singleuser');
+        } else {
+            set_config('system','singleuser', $singleuser);
+        }
 	set_config('system','maximagesize', $maximagesize);
 	set_config('system','max_image_length', $maximagelength);
 	set_config('system','jpeg_quality', $jpegimagequality);
 	
 	set_config('config','register_policy', $register_policy);
+	set_config('system','max_daily_registrations', $daily_registrations);
 	set_config('system','account_abandon_days', $abandon_days);
 	set_config('config','register_text', $register_text);
 	set_config('system','allowed_sites', $allowed_sites);
@@ -356,6 +375,8 @@ function admin_page_site_post(&$a){
 	}
 	set_config('system','thread_allow', $thread_allow);
 	set_config('system','newuser_private', $newuser_private);
+	set_config('system','enotify_no_content', $enotify_no_content);
+	set_config('system','disable_embedded', $disable_embedded);
 
 	set_config('system','block_extended_register', $no_multi_reg);
 	set_config('system','no_openid', $no_openid);
@@ -368,12 +389,23 @@ function admin_page_site_post(&$a){
 	set_config('system','curl_timeout', $timeout);
 	set_config('system','dfrn_only', $dfrn_only);
 	set_config('system','ostatus_disabled', $ostatus_disabled);
+        set_config('system','ostatus_poll_interval', $ostatus_poll_interval);
 	set_config('system','diaspora_enabled', $diaspora_enabled);
-
+	set_config('config','private_addons', $private_addons);
+	
+	set_config('system','new_share', $new_share);
+	set_config('system','hide_help', $hide_help);
+	set_config('system','use_fulltext_engine', $use_fulltext_engine);
+	set_config('system','itemcache', $itemcache);
+	set_config('system','itemcache_duration', $itemcache_duration);
+	set_config('system','lockpath', $lockpath);
+	set_config('system','temppath', $temppath);
+	set_config('system','basepath', $basepath);
+	
 	info( t('Site settings updated.') . EOL);
 	goaway($a->get_baseurl(true) . '/admin/site' );
-	return; // NOTREACHED	
-	
+	return; // NOTREACHED
+
 }
 
 /**
@@ -408,19 +440,35 @@ function admin_page_site(&$a) {
             if (file_exists($file . '/mobile')) {
                 $theme_choices_mobile[$f] = $theme_name;
             }
-			else {
+		else {
                 $theme_choices[$f] = $theme_name;
 			}
 		}
-	}
-	
-	
+        }
+
+        /* OStatus conversation poll choices */
+        $ostatus_poll_choices = array(
+                "-1" => t("Never"),
+                "0" => t("Frequently"),
+                "60" => t("Hourly"),
+                "720" => t("Twice daily"),
+                "1440" => t("Daily")
+            );
+
+        /* get user names to make the install a personal install of X */
+        $user_names = array();
+        $user_names['---'] = t('Multi user instance');
+        $users = q("SELECT username, nickname FROM `user`");
+        foreach ($users as $user) {
+            $user_names[$user['nickname']] = $user['username'];
+        }
+
 	/* Banner */
 	$banner = get_config('system','banner');
 	if($banner == false) 
 		$banner = '<a href="http://friendica.com"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="http://friendica.com">Friendica</a></span>';
 	$banner = htmlspecialchars($banner);
-	
+
 	//echo "<pre>"; var_dump($lang_choices); die("</pre>");
 
 	/* Register policy */
@@ -445,6 +493,7 @@ function admin_page_site(&$a) {
 		'$upload' => t('File upload'),
 		'$corporate' => t('Policies'),
 		'$advanced' => t('Advanced'),
+		'$performance' => t('Performance'),
 		
 		'$baseurl' => $a->get_baseurl(true),
 		// name, label, value, help string, extra data...
@@ -454,11 +503,15 @@ function admin_page_site(&$a) {
 		'$theme' 		=> array('theme', t("System theme"), get_config('system','theme'), t("Default system theme - may be over-ridden by user profiles - <a href='#' id='cnftheme'>change theme settings</a>"), $theme_choices),
 		'$theme_mobile' 	=> array('theme_mobile', t("Mobile system theme"), get_config('system','mobile-theme'), t("Theme for mobile devices"), $theme_choices_mobile),
 		'$ssl_policy'		=> array('ssl_policy', t("SSL link policy"), (string) intval(get_config('system','ssl_policy')), t("Determines whether generated links should be forced to use SSL"), $ssl_choices),
+		'$new_share'		=> array('new_share', t("'Share' element"), get_config('system','new_share'), t("Activates the bbcode element 'share' for repeating items.")),
+		'$hide_help'		=> array('hide_help', t("Hide help entry from navigation menu"), get_config('system','hide_help'), t("Hides the menu entry for the Help pages from the navigation menu. You can still access it calling /help directly.")),
+		'$singleuser' 		=> array('singleuser', t("Single user instance"), get_config('system','singleuser'), t("Make this instance multi-user or single-user for the named user"), $user_names),
 		'$maximagesize'		=> array('maximagesize', t("Maximum image size"), get_config('system','maximagesize'), t("Maximum size in bytes of uploaded images. Default is 0, which means no limits.")),
 		'$maximagelength'		=> array('maximagelength', t("Maximum image length"), get_config('system','max_image_length'), t("Maximum length in pixels of the longest side of uploaded images. Default is -1, which means no limits.")),
 		'$jpegimagequality'		=> array('jpegimagequality', t("JPEG image quality"), get_config('system','jpeg_quality'), t("Uploaded JPEGS will be saved at this quality setting [0-100]. Default is 100, which is full quality.")),
 
 		'$register_policy'	=> array('register_policy', t("Register policy"), $a->config['register_policy'], "", $register_choices),
+		'$daily_registrations'	=> array('max_daily_registrations', t("Maximum Daily Registrations"), get_config('system', 'max_daily_registrations'), t("If registration is permitted above, this sets the maximum number of new user registrations to accept per day.  If register is set to closed, this setting has no effect.")),
 		'$register_text'	=> array('register_text', t("Register text"), htmlentities($a->config['register_text'], ENT_QUOTES, 'UTF-8'), t("Will be displayed prominently on the registration page.")),
 		'$abandon_days'		=> array('abandon_days', t('Accounts abandoned after x days'), get_config('system','account_abandon_days'), t('Will not waste system resources polling external sites for abandonded accounts. Enter 0 for no time limit.')),
 		'$allowed_sites'	=> array('allowed_sites', t("Allowed friend domains"), get_config('system','allowed_sites'), t("Comma separated list of domains which are allowed to establish friendships with this site. Wildcards are accepted. Empty to allow any domains")),
@@ -468,13 +521,17 @@ function admin_page_site(&$a) {
 		'$global_directory'	=> array('directory_submit_url', t("Global directory update URL"), get_config('system','directory_submit_url'), t("URL to update the global directory. If this is not set, the global directory is completely unavailable to the application.")),
 		'$thread_allow'		=> array('thread_allow', t("Allow threaded items"), get_config('system','thread_allow'), t("Allow infinite level threading for items on this site.")),
 		'$newuser_private'	=> array('newuser_private', t("Private posts by default for new users"), get_config('system','newuser_private'), t("Set default post permissions for all new members to the default privacy group rather than public.")),
-			
+		'$enotify_no_content'	=> array('enotify_no_content', t("Don't include post content in email notifications"), get_config('system','enotify_no_content'), t("Don't include the content of a post/comment/private message/etc. in the email notifications that are sent out from this site, as a privacy measure.")),
+		'$private_addons'	=> array('private_addons', t("Disallow public access to addons listed in the apps menu."), get_config('config','private_addons'), t("Checking this box will restrict addons listed in the apps menu to members only.")),
+		'$disable_embedded'	=> array('disable_embedded', t("Don't embed private images in posts"), get_config('system','disable_embedded'), t("Don't replace locally-hosted private photos in posts with an embedded copy of the image. This means that contacts who receive posts containing private photos will have to authenticate and load each image, which may take a while.")),
+		
 		'$no_multi_reg'		=> array('no_multi_reg', t("Block multiple registrations"),  get_config('system','block_extended_register'), t("Disallow users to register additional accounts for use as pages.")),
 		'$no_openid'		=> array('no_openid', t("OpenID support"), !get_config('system','no_openid'), t("OpenID support for registration and logins.")),
 		'$no_regfullname'	=> array('no_regfullname', t("Fullname check"), !get_config('system','no_regfullname'), t("Force users to register with a space between firstname and lastname in Full name, as an antispam measure")),
 		'$no_utf'		=> array('no_utf', t("UTF-8 Regular expressions"), !get_config('system','no_utf'), t("Use PHP UTF8 regular expressions")),
 		'$no_community_page' 	=> array('no_community_page', t("Show Community Page"), !get_config('system','no_community_page'), t("Display a Community page showing all recent public postings on this site.")),
 		'$ostatus_disabled' 	=> array('ostatus_disabled', t("Enable OStatus support"), !get_config('system','ostatus_disabled'), t("Provide built-in OStatus \x28identi.ca, status.net, etc.\x29 compatibility. All communications in OStatus are public, so privacy warnings will be occasionally displayed.")),	
+		'$ostatus_poll_interval'	=> array('ostatus_poll_interval', t("OStatus conversation completion interval"), (string) intval(get_config('system','ostatus_poll_interval')), t("How often shall the poller check for new entries in OStatus conversations? This can be a very ressource task."), $ostatus_poll_choices),
 		'$diaspora_enabled' 	=> array('diaspora_enabled', t("Enable Diaspora support"), get_config('system','diaspora_enabled'), t("Provide built-in Diaspora network compatibility.")),	
 		'$dfrn_only'        	=> array('dfrn_only', t('Only allow Friendica contacts'), get_config('system','dfrn_only'), t("All contacts must use Friendica protocols. All other built-in communication protocols disabled.")),
 		'$verifyssl' 		=> array('verifyssl', t("Verify SSL"), get_config('system','verifyssl'), t("If you wish, you can turn on strict certificate checking. This will mean you cannot connect (at all) to self-signed SSL sites.")),
@@ -484,8 +541,15 @@ function admin_page_site(&$a) {
 		'$delivery_interval'	=> array('delivery_interval', t("Delivery interval"), (x(get_config('system','delivery_interval'))?get_config('system','delivery_interval'):2), t("Delay background delivery processes by this many seconds to reduce system load. Recommend: 4-5 for shared hosts, 2-3 for virtual private servers. 0-1 for large dedicated servers.")),
 		'$poll_interval'	=> array('poll_interval', t("Poll interval"), (x(get_config('system','poll_interval'))?get_config('system','poll_interval'):2), t("Delay background polling processes by this many seconds to reduce system load. If 0, use delivery interval.")),
 		'$maxloadavg'		=> array('maxloadavg', t("Maximum Load Average"), ((intval(get_config('system','maxloadavg')) > 0)?get_config('system','maxloadavg'):50), t("Maximum system load before delivery and poll processes are deferred - default 50.")),
+
+		'$use_fulltext_engine'	=> array('use_fulltext_engine', t("Use MySQL full text engine"), get_config('system','use_fulltext_engine'), t("Activates the full text engine. Speeds up search - but can only search for four and more characters.")),
+		'$itemcache'		=> array('itemcache', t("Path to item cache"), get_config('system','itemcache'), "The item caches buffers generated bbcode and external images."),
+		'$itemcache_duration' 	=> array('itemcache_duration', t("Cache duration in seconds"), get_config('system','itemcache_duration'), t("How long should the cache files be hold? Default value is 86400 seconds (One day).")),
+		'$lockpath'		=> array('lockpath', t("Path for lock file"), get_config('system','lockpath'), "The lock file is used to avoid multiple pollers at one time. Only define a folder here."),
+		'$temppath'		=> array('temppath', t("Temp path"), get_config('system','temppath'), "If you have a restricted system where the webserver can't access the system temp path, enter another path here."),
+		'$basepath'		=> array('basepath', t("Base path to installation"), get_config('system','basepath'), "If the system cannot detect the correct path to your installation, enter the correct path here. This setting should only be set if you are using a restricted system and symbolic links to your webroot."),
         '$form_security_token' => get_form_security_token("admin_site"),
-			
+
 	));
 
 }
@@ -558,9 +622,40 @@ function admin_page_dbsync(&$a) {
 function admin_page_users_post(&$a){
 	$pending = ( x($_POST, 'pending') ? $_POST['pending'] : Array() );
 	$users = ( x($_POST, 'user') ? $_POST['user'] : Array() );
+	$nu_name = ( x($_POST, 'new_user_name') ? $_POST['new_user_name'] : ''); 
+  $nu_nickname = ( x($_POST, 'new_user_nickname') ? $_POST['new_user_nickname'] : ''); 
+  $nu_email = ( x($_POST, 'new_user_email') ? $_POST['new_user_email'] : '');
 
-    check_form_security_token_redirectOnErr('/admin/users', 'admin_users');
-
+  check_form_security_token_redirectOnErr('/admin/users', 'admin_users');
+    
+  if (!($nu_name==="") && !($nu_email==="") && !($nu_nickname==="")) { 
+      require_once('include/user.php'); 
+      require_once('include/email.php'); 
+      $result = create_user( array('username'=>$nu_name, 'email'=>$nu_email, 'nickname'=>$nu_nickname, 'verified'=>1)  ); 
+      if(! $result['success']) { 
+		    notice($result['message']); 
+		    return; 
+      } 
+      $nu = $result['user']; 
+      $email_tpl = get_intltext_template("register_adminadd_eml.tpl"); 
+      $email_tpl = replace_macros($email_tpl, array( 
+		    '$sitename' => $a->config['sitename'], 
+		    '$siteurl' =>  $a->get_baseurl(), 
+		    '$username' => $nu['username'], 
+		    '$email' => $nu['email'], 
+		    '$password' => $result['password'], 
+		    '$uid' => $nu['uid'] )); 
+ 
+      $res = mail($nu['email'], email_header_encode( sprintf( t('Registration details for %s'), $a->config['sitename']),'UTF-8'), 
+		    $email_tpl,  
+		    'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n" 
+		    . 'Content-type: text/plain; charset=UTF-8' . "\n" 
+		    . 'Content-transfer-encoding: 8bit' ); 
+      if ($res) { 
+		    info( t('Registration successful. Email send to user').EOL ); 
+      } 
+  }
+	
 	if (x($_POST,'page_users_block')){
 		foreach($users as $uid){
 			q("UPDATE `user` SET `blocked`=1-`blocked` WHERE `uid`=%s",
@@ -645,7 +740,7 @@ function admin_page_users(&$a){
 	}
 	
 	
-	$users = q("SELECT `user` . * , `contact`.`name` , `contact`.`url` , `contact`.`micro`, `lastitem`.`lastitem_date`
+	$users = q("SELECT `user` . * , `contact`.`name` , `contact`.`url` , `contact`.`micro`, `lastitem`.`lastitem_date`, `user`.`account_expired`
 				FROM
 					(SELECT MAX(`item`.`changed`) as `lastitem_date`, `item`.`uid`
 					FROM `item`
@@ -669,18 +764,44 @@ function admin_page_users(&$a){
 			t('Normal Account'), 
 			t('Soapbox Account'),
 			t('Community/Celebrity Account'),
-			t('Automatic Friend Account')
+                        t('Automatic Friend Account')
 		);
 		$e['page-flags'] = $accounts[$e['page-flags']];
 		$e['register_date'] = relative_date($e['register_date']);
 		$e['login_date'] = relative_date($e['login_date']);
 		$e['lastitem_date'] = relative_date($e['lastitem_date']);
         $e['is_admin'] = ($e['email'] === $a->config['admin_email']);
+        $e['deleted'] = ($e['account_removed']?relative_date($e['account_expires_on']):False);
 		return $e;
 	}
 	$users = array_map("_setup_users", $users);
 	
 	
+	// Get rid of dashes in key names, Smarty3 can't handle them
+	// and extracting deleted users
+	
+	$tmp_users = Array();
+	$deleted = Array();
+	
+	while(count($users)) {
+		$new_user = Array();
+		foreach( array_pop($users) as $k => $v) {
+			$k = str_replace('-','_',$k);
+			$new_user[$k] = $v;
+		}
+		if($new_user['deleted']) {
+			array_push($deleted, $new_user);
+		}
+		else {
+			array_push($tmp_users, $new_user);
+		}
+	}
+	//Reversing the two array, and moving $tmp_users to $users
+	array_reverse($deleted);
+	while(count($tmp_users)) {
+		array_push($users, array_pop($tmp_users));
+	}
+
 	$t = get_markup_template("admin_users.tpl");
 	$o = replace_macros($t, array(
 		// strings //
@@ -689,6 +810,7 @@ function admin_page_users(&$a){
 		'$submit' => t('Submit'),
 		'$select_all' => t('select all'),
 		'$h_pending' => t('User registrations waiting for confirm'),
+		'$h_deleted' => t('User waiting for permanent deletion'),
 		'$th_pending' => array( t('Request date'), t('Name'), t('Email') ),
 		'$no_pending' =>  t('No registrations.'),
 		'$approve' => t('Approve'),
@@ -697,8 +819,11 @@ function admin_page_users(&$a){
 		'$block' => t('Block'),
 		'$unblock' => t('Unblock'),
         '$siteadmin' => t('Site admin'),
+        '$accountexpired' => t('Account expired'),
 		
 		'$h_users' => t('Users'),
+		'$h_newuser' => t('New User'),
+		'$th_deleted' => array( t('Name'), t('Email'), t('Register date'), t('Last login'), t('Last item'), t('Deleted since') ),
 		'$th_users' => array( t('Name'), t('Email'), t('Register date'), t('Last login'), t('Last item'),  t('Account') ),
 
 		'$confirm_delete_multi' => t('Selected users will be deleted!\n\nEverything these users had posted on this site will be permanently deleted!\n\nAre you sure?'),
@@ -710,7 +835,11 @@ function admin_page_users(&$a){
 		'$baseurl' => $a->get_baseurl(true),
 
 		'$pending' => $pending,
+		'deleted' => $deleted,
 		'$users' => $users,
+		'$newusername'  => array('new_user_name', t("Name"), '', t("Name of the new user.")), 
+    '$newusernickname'  => array('new_user_nickname', t("Nickname"), '', t("Nickname of the new user.")), 
+    '$newuseremail'  => array('new_user_email', t("Email"), '', t("Email address of the new user.")),
 	));
 	$o .= paginate($a);
 	return $o;
@@ -724,7 +853,7 @@ function admin_page_users(&$a){
  * @return string
  */
 function admin_page_plugins(&$a){
-	
+
 	/**
 	 * Single plugin
 	 */
@@ -734,9 +863,9 @@ function admin_page_plugins(&$a){
 			notice( t("Item not found.") );
 			return '';
 		}
-		
+
 		if (x($_GET,"a") && $_GET['a']=="t"){
-            check_form_security_token_redirectOnErr('/admin/plugins', 'admin_themes', 't');
+			check_form_security_token_redirectOnErr('/admin/plugins', 'admin_themes', 't');
 
 			// Toggle plugin status
 			$idx = array_search($plugin, $a->plugins);
@@ -761,52 +890,53 @@ function admin_page_plugins(&$a){
 		} else {
 			$status="off"; $action= t("Enable");
 		}
-		
+
 		$readme=Null;
 		if (is_file("addon/$plugin/README.md")){
 			$readme = file_get_contents("addon/$plugin/README.md");
 			$readme = Markdown($readme);
 		} else if (is_file("addon/$plugin/README")){
 			$readme = "<pre>". file_get_contents("addon/$plugin/README") ."</pre>";
-		} 
-		
+		}
+
 		$admin_form="";
 		if (is_array($a->plugins_admin) && in_array($plugin, $a->plugins_admin)){
 			@require_once("addon/$plugin/$plugin.php");
 			$func = $plugin.'_plugin_admin';
 			$func($a, $admin_form);
 		}
-		
+
 		$t = get_markup_template("admin_plugins_details.tpl");
+
 		return replace_macros($t, array(
 			'$title' => t('Administration'),
 			'$page' => t('Plugins'),
 			'$toggle' => t('Toggle'),
 			'$settings' => t('Settings'),
 			'$baseurl' => $a->get_baseurl(true),
-		
+
 			'$plugin' => $plugin,
 			'$status' => $status,
 			'$action' => $action,
 			'$info' => get_plugin_info($plugin),
 			'$str_author' => t('Author: '),
-			'$str_maintainer' => t('Maintainer: '),			
-		
+			'$str_maintainer' => t('Maintainer: '),
+
 			'$admin_form' => $admin_form,
 			'$function' => 'plugins',
 			'$screenshot' => '',
 			'$readme' => $readme,
 
-            '$form_security_token' => get_form_security_token("admin_themes"),
+			'$form_security_token' => get_form_security_token("admin_themes"),
 		));
-	} 
-	 
-	 
-	
+	}
+
+
+
 	/**
 	 * List plugins
 	 */
-	
+
 	$plugins = array();
 	$files = glob("addon/*/");
 	if($files) {
@@ -818,7 +948,7 @@ function admin_page_plugins(&$a){
 			}
 		}
 	}
-	
+
 	$t = get_markup_template("admin_plugins.tpl");
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
@@ -889,7 +1019,7 @@ function rebuild_theme_table($themes) {
 	return $o;
 }
 
-	
+
 /**
  * Themes admin page
  *
@@ -897,7 +1027,7 @@ function rebuild_theme_table($themes) {
  * @return string
  */
 function admin_page_themes(&$a){
-	
+
 	$allowed_themes_str = get_config('system','allowed_themes');
 	$allowed_themes_raw = explode(',',$allowed_themes_str);
 	$allowed_themes = array();
@@ -933,18 +1063,22 @@ function admin_page_themes(&$a){
 			notice( t("Item not found.") );
 			return '';
 		}
-		
+
 		if (x($_GET,"a") && $_GET['a']=="t"){
-            check_form_security_token_redirectOnErr('/admin/themes', 'admin_themes', 't');
+			check_form_security_token_redirectOnErr('/admin/themes', 'admin_themes', 't');
 
 			// Toggle theme status
 
 			toggle_theme($themes,$theme,$result);
 			$s = rebuild_theme_table($themes);
-			if($result)
+			if($result) {
+				install_theme($theme);
 				info( sprintf('Theme %s enabled.',$theme));
-			else
+			}
+			else {
+				uninstall_theme($theme);
 				info( sprintf('Theme %s disabled.',$theme));
+			}
 
 			set_config('system','allowed_themes',$s);
 			goaway($a->get_baseurl(true) . '/admin/themes' );
@@ -959,28 +1093,27 @@ function admin_page_themes(&$a){
 		} else {
 			$status="off"; $action= t("Enable");
 		}
-		
+
 		$readme=Null;
 		if (is_file("view/theme/$theme/README.md")){
 			$readme = file_get_contents("view/theme/$theme/README.md");
 			$readme = Markdown($readme);
 		} else if (is_file("view/theme/$theme/README")){
 			$readme = "<pre>". file_get_contents("view/theme/$theme/README") ."</pre>";
-		} 
-		
+		}
+
 		$admin_form="";
 		if (is_file("view/theme/$theme/config.php")){
 			require_once("view/theme/$theme/config.php");
 			if(function_exists("theme_admin")){
 				$admin_form = theme_admin($a);
 			}
-			
+
 		}
-		
 
 		$screenshot = array( get_theme_screenshot($theme), t('Screenshot'));
 		if(! stristr($screenshot[0],$theme))
-			$screenshot = null;		
+			$screenshot = null;
 
 		$t = get_markup_template("admin_plugins_details.tpl");
 		return replace_macros($t, array(
@@ -989,7 +1122,7 @@ function admin_page_themes(&$a){
 			'$toggle' => t('Toggle'),
 			'$settings' => t('Settings'),
 			'$baseurl' => $a->get_baseurl(true),
-		
+
 			'$plugin' => $theme,
 			'$status' => $status,
 			'$action' => $action,
@@ -1003,21 +1136,19 @@ function admin_page_themes(&$a){
 
 			'$form_security_token' => get_form_security_token("admin_themes"),
 		));
-	} 
-	 
-	 
-	
+	}
+
 	/**
 	 * List themes
 	 */
-	
+
 	$xthemes = array();
 	if($themes) {
 		foreach($themes as $th) {
 			$xthemes[] = array($th['name'],(($th['allowed']) ? "on" : "off"), get_theme_info($th['name']));
 		}
 	}
-	
+
 	$t = get_markup_template("admin_plugins.tpl");
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
@@ -1116,7 +1247,7 @@ readable.");
 		'$logname' =>  get_config('system','logfile'),
 		
 									// name, label, value, help string, extra data...
-		'$debugging' 		=> array('debugging', t("Debugging"),get_config('system','debugging'), ""),
+		'$debugging' 		=> array('debugging', t("Enable Debugging"),get_config('system','debugging'), ""),
 		'$logfile'			=> array('logfile', t("Log file"), get_config('system','logfile'), t("Must be writable by web server. Relative to your Friendica top-level directory.")),
 		'$loglevel' 		=> array('loglevel', t("Log level"), get_config('system','loglevel'), "", $log_choices),
 
@@ -1178,7 +1309,7 @@ function admin_page_remoteupdate(&$a) {
 		'$ftppath'	=> array('ftppath', t("FTP Path"), '/',''),
 		'$ftpuser'	=> array('ftpuser', t("FTP User"), '',''),
 		'$ftppwd'	=> array('ftppwd', t("FTP Password"), '',''),
-		'$remotefile'=>array('remotefile','', $u['2'],'')
+		'$remotefile'=>array('remotefile','', $u['2'],''),
 	));
 	
 }

@@ -22,7 +22,8 @@ function user_remove($uid) {
 		$r[0]['nickname']
 	);
 
-	q("DELETE FROM `contact` WHERE `uid` = %d", intval($uid));
+	// don't delete yet, will be done later when contacts have deleted my stuff
+	// q("DELETE FROM `contact` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `gcign` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `group` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `group_member` WHERE `uid` = %d", intval($uid));
@@ -41,7 +42,10 @@ function user_remove($uid) {
 	q("DELETE FROM `pconfig` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `search` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `spam` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `user` WHERE `uid` = %d", intval($uid));
+	// don't delete yet, will be done later when contacts have deleted my stuff
+	// q("DELETE FROM `user` WHERE `uid` = %d", intval($uid));
+	q("UPDATE `user` SET `account_removed` = 1, `account_expires_on` = UTC_TIMESTAMP() WHERE `uid` = %d", intval($uid));
+	proc_run('php', "include/notifier.php", "removeme", $uid);
 	if($uid == local_user()) {
 		unset($_SESSION['authenticated']);
 		unset($_SESSION['uid']);
@@ -165,6 +169,7 @@ function mark_for_death($contact) {
 			q("update contact set `archive` = 1 where id = %d limit 1",
 				intval($contact['id'])
 			);
+			q("UPDATE `item` SET `private` = 2 WHERE `contact-id` = %d AND `uid` = %d", intval($contact['id']), intval($contact['uid']));
 
 			//contact_remove($contact['id']);
 
@@ -214,16 +219,16 @@ function contact_photo_menu($contact) {
 
 	$poke_link = $a->get_baseurl() . '/poke/?f=&c=' . $contact['id'];
 	$contact_url = $a->get_baseurl() . '/contacts/' . $contact['id'];
-	$posts_link = $a->get_baseurl() . '/network/?cid=' . $contact['id'];
+	$posts_link = $a->get_baseurl() . '/network/0?nets=all&cid=' . $contact['id'];
 
 	$menu = Array(
-		t("Poke") => $poke_link,
-		t("View Status") => $status_link,
-		t("View Profile") => $profile_link,
-		t("View Photos") => $photos_link,		
-		t("Network Posts") => $posts_link, 
-		t("Edit Contact") => $contact_url,
-		t("Send PM") => $pm_url,
+		'poke' => array(t("Poke"), $poke_link),
+		'status' => array(t("View Status"), $status_link),
+		'profile' => array(t("View Profile"), $profile_link),
+		'photos' => array(t("View Photos"), $photos_link),		
+		'network' => array(t("Network Posts"), $posts_link), 
+		'edit' => array(t("Edit Contact"), $contact_url),
+		'pm' => array(t("Send PM"), $pm_url),
 	);
 	
 	
@@ -231,7 +236,7 @@ function contact_photo_menu($contact) {
 	
 	call_hooks('contact_photo_menu', $args);
 	
-	$o = "";
+/*	$o = "";
 	foreach($menu as $k=>$v){
 		if ($v!="") {
 			if(($k !== t("Network Posts")) && ($k !== t("Send PM")) && ($k !== t('Edit Contact')))
@@ -240,7 +245,16 @@ function contact_photo_menu($contact) {
 				$o .= "<li><a href=\"$v\">$k</a></li>\n";
 		}
 	}
-	return $o;
+	return $o;*/
+	foreach($menu as $k=>$v){
+		if ($v[1]!="") {
+			if(($v[0] !== t("Network Posts")) && ($v[0] !== t("Send PM")) && ($v[0] !== t('Edit Contact')))
+				$menu[$k][2] = 1;
+			else
+				$menu[$k][2] = 0;
+		}
+	}
+	return $menu;
 }}
 
 

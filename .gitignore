@@ -1,3 +1,4 @@
+sftp-config.json
 favicon.*
 .htconfig.php
 \#*
@@ -7,7 +8,9 @@ include/jquery-1.4.2.min.js
 *.version*
 favicon.*
 home.html
+addon
 *~
+robots.txt
 
 #ignore documentation, it should be newly built 
 doc/api
@@ -23,4 +26,12 @@ report/
 #ignore OSX .DS_Store files 
 .DS_Store
 
-sftp-config.json
+/nbproject/private/
+
+#ignore smarty cache
+/view/smarty3/compiled/
+
+#ignore cache folders
+/privacy_image_cache/
+/photo/
+nbproject

@@ -2,6 +2,7 @@
 
 require_once('include/Contact.php');
 require_once('include/socgraph.php');
+require_once('include/contact_selectors.php');
 
 function contacts_init(&$a) {
 	if(! local_user())
@@ -33,7 +34,7 @@ function contacts_init(&$a) {
 				'$photo' => $a->data['contact']['photo']
 			));
 			$follow_widget = '';
-	}	
+	}
 	else {
 		$vcard_widget = '';
 		$follow_widget = follow_widget();
@@ -211,6 +212,9 @@ function contacts_content(&$a) {
 				intval($contact_id),
 				intval(local_user())
 			);
+			if ($archived) {
+				q("UPDATE `item` SET `private` = 2 WHERE `contact-id` = %d AND `uid` = %d", intval($contact_id), intval(local_user()));
+			}
 			if($r) {
 				//notice( t('Contact has been ') . (($archived) ? t('archived') : t('unarchived')) . EOL );
 				info( (($archived) ? t('Contact has been archived') : t('Contact has been unarchived')) . EOL );
@@ -220,6 +224,36 @@ function contacts_content(&$a) {
 		}
 
 		if($cmd === 'drop') {
+
+			// Check if we should do HTML-based delete confirmation
+			if($_REQUEST['confirm']) {
+				// <form> can't take arguments in its "action" parameter
+				// so add any arguments as hidden inputs
+				$query = explode_querystring($a->query_string);
+				$inputs = array();
+				foreach($query['args'] as $arg) {
+					if(strpos($arg, 'confirm=') === false) {
+						$arg_parts = explode('=', $arg);
+						$inputs[] = array('name' => $arg_parts[0], 'value' => $arg_parts[1]);
+					}
+				}
+
+				$a->page['aside'] = '';
+				return replace_macros(get_markup_template('confirm.tpl'), array(
+					'$method' => 'get',
+					'$message' => t('Do you really want to delete this contact?'),
+					'$extra_inputs' => $inputs,
+					'$confirm' => t('Yes'),
+					'$confirm_url' => $query['base'],
+					'$confirm_name' => 'confirmed',
+					'$cancel' => t('Cancel'),
+				));
+			}
+			// Now check how the user responded to the confirmation query
+			if($_REQUEST['canceled']) {
+				goaway($a->get_baseurl(true) . '/' . $_SESSION['return_url']);
+
+			}
 
 			require_once('include/Contact.php');
 
@@ -235,14 +269,18 @@ function contacts_content(&$a) {
 		}
 	}
 
+
+
+	$_SESSION['return_url'] = $a->query_string;
+
 	if((x($a->data,'contact')) && (is_array($a->data['contact']))) {
 
 		$contact_id = $a->data['contact']['id'];
 		$contact = $a->data['contact'];
 
-		$editselect = 'exact';
-		if(intval(get_pconfig(local_user(),'system','plaintext')))
-			$editselect = 'none';
+		$editselect = 'none';
+		if( feature_enabled(local_user(),'richtext') )
+			$editselect = 'exact';
 
 		$a->page['htmlhead'] .= replace_macros(get_markup_template('contact_head.tpl'), array(
 			'$baseurl' => $a->get_baseurl(true),
@@ -342,7 +380,7 @@ function contacts_content(&$a) {
 
 		$lost_contact = (($contact['archive'] && $contact['term-date'] != '0000-00-00 00:00:00' && $contact['term-date'] < datetime_convert('','','now')) ? t('Communications lost with this contact!') : '');
 
-		$o .= replace_macros($tpl,array(
+		$o .= replace_macros($tpl, array(
 			'$header' => t('Contact Editor'),
 			'$tab_str' => $tab_str,
 			'$submit' => t('Submit'),
@@ -384,7 +422,7 @@ function contacts_content(&$a) {
 			'$dir_icon' => $dir_icon,
 			'$alt_text' => $alt_text,
 			'$sparkle' => $sparkle,
-			'$url' => $url
+			'$url' => $url,
 
 		));
 
@@ -400,8 +438,6 @@ function contacts_content(&$a) {
 	$hidden = false;
 	$ignored = false;
 	$all = false;
-
-	$_SESSION['return_url'] = $a->query_string;
 
 	if(($a->argc == 2) && ($a->argv[1] === 'all')) {
 		$sql_extra = '';
@@ -567,7 +603,7 @@ function contacts_content(&$a) {
 	}
 	
 	$tpl = get_markup_template("contacts-template.tpl");
-	$o .= replace_macros($tpl,array(
+	$o .= replace_macros($tpl, array(
 		'$header' => t('Contacts') . (($nets) ? ' - ' . network_to_name($nets) : ''),
 		'$tabs' => $t,
 		'$total' => $total,

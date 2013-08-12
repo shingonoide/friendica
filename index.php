@@ -1,5 +1,6 @@
 <?php
 
+
 /**
  *
  * Friendica
@@ -31,9 +32,7 @@ $install = ((file_exists('.htconfig.php') && filesize('.htconfig.php')) ? false 
 
 
 
-$lang = get_browser_language();
-	
-load_translation_table($lang);
+
 
 /**
  *
@@ -41,9 +40,9 @@ load_translation_table($lang);
  *
  */
 
-require_once("dba.php");
+require_once("include/dba.php");
 
-if(! $install) {
+if(!$install) {
 	$db = new dba($db_host, $db_user, $db_pass, $db_data, $install);
     	    unset($db_host, $db_user, $db_pass, $db_data);
 
@@ -54,11 +53,16 @@ if(! $install) {
 	load_config('config');
 	load_config('system');
 
-	require_once("session.php");
+	require_once("include/session.php");
 	load_hooks();
 	call_hooks('init_1');
+
+	$maintenance = get_config('system', 'maintenance');
 }
 
+$lang = get_browser_language();
+
+load_translation_table($lang);
 
 /**
  *
@@ -89,7 +93,7 @@ if((x($_SESSION,'language')) && ($_SESSION['language'] !== $lang)) {
 	load_translation_table($lang);
 }
 
-if((x($_GET,'zrl')) && (! $install)) {
+if((x($_GET,'zrl')) && (!$install && !$maintenance)) {
 	$_SESSION['my_url'] = $_GET['zrl'];
 	$a->query_string = preg_replace('/[\?&]zrl=(.*?)([\?&]|$)/is','',$a->query_string);
 	zrl_init($a);
@@ -109,25 +113,15 @@ if((x($_GET,'zrl')) && (! $install)) {
 // header('Link: <' . $a->get_baseurl() . '/amcd>; rel="acct-mgmt";');
 
 if((x($_SESSION,'authenticated')) || (x($_POST,'auth-params')) || ($a->module === 'login'))
-	require("auth.php");
+	require("include/auth.php");
 
 if(! x($_SESSION,'authenticated'))
 	header('X-Account-Management-Status: none');
 
 
-/*
- * Create the page head after setting the language
- * and getting any auth credentials
- */
-
-$a->init_pagehead();
-
-/**
- * Build the page ending -- this is stuff that goes right before
- * the closing </body> tag
- */
-
-$a->init_page_end();
+/* set up page['htmlhead'] and page['end'] for the modules to use */
+$a->page['htmlhead'] = '';
+$a->page['end'] = '';
 
 
 if(! x($_SESSION,'sysmsg'))
@@ -145,16 +139,26 @@ if(! x($_SESSION,'sysmsg_info'))
 
 if($install)
 	$a->module = 'install';
-else
-	check_config($a);
+elseif($maintenance)
+	$a->module = 'maintenance';
+else {
+	check_url($a);
+	check_db();
+	check_plugins($a);
+}
 
 nav_set_selected('nothing');
 
-$arr = array('app_menu' => $a->apps);
+//Don't populate apps_menu if apps are private
+$privateapps = get_config('config','private_addons');
+if((local_user()) || (! $privateapps === "1"))
+{
+	$arr = array('app_menu' => $a->apps);
 
-call_hooks('app_menu', $arr);
+	call_hooks('app_menu', $arr);
 
-$a->apps = $arr['app_menu'];
+	$a->apps = $arr['app_menu'];
+}
 
 /**
  *
@@ -184,10 +188,22 @@ if(strlen($a->module)) {
 	 *
 	 */
 
+	// Compatibility with the Android Diaspora client
+	if ($a->module == "stream")
+		$a->module = "network";
+	
+	$privateapps = get_config('config','private_addons');
+
 	if(is_array($a->plugins) && in_array($a->module,$a->plugins) && file_exists("addon/{$a->module}/{$a->module}.php")) {
-		include_once("addon/{$a->module}/{$a->module}.php");
-		if(function_exists($a->module . '_module'))
-			$a->module_loaded = true;
+		//Check if module is an app and if public access to apps is allowed or not
+		if((!local_user()) && plugin_is_app($a->module) && $privateapps === "1") {
+			info( t("You must be logged in to use addons. "));
+		}
+		else {
+			include_once("addon/{$a->module}/{$a->module}.php");
+			if(function_exists($a->module . '_module'))
+				$a->module_loaded = true;
+		}
 	}
 
 	/**
@@ -247,7 +263,7 @@ if (file_exists($theme_info_file)){
 if(! x($a->page,'content'))
 	$a->page['content'] = '';
 
-if(! $install)
+if(!$install && !$maintenance)
 	call_hooks('page_content_top',$a->page['content']);
 
 /**
@@ -300,7 +316,31 @@ if($a->module_loaded) {
 		$a->page['content'] .= $arr['content'];
 	}
 
+	if(function_exists(str_replace('-','_',current_theme()) . '_content_loaded')) {
+		$func = str_replace('-','_',current_theme()) . '_content_loaded';
+		$func($a);
+	}
+
 }
+
+
+/*
+ * Create the page head after setting the language
+ * and getting any auth credentials
+ *
+ * Moved init_pagehead() and init_page_end() to after
+ * all the module functions have executed so that all
+ * theme choices made by the modules can take effect
+ */
+
+$a->init_pagehead();
+
+/**
+ * Build the page ending -- this is stuff that goes right before
+ * the closing </body> tag
+ */
+
+$a->init_page_end();
 
 // If you're just visiting, let javascript take you home
 
@@ -358,15 +398,13 @@ $a->page['content'] .=  '<div id="pause"></div>';
  *
  */
 
-if($a->module != 'install') {
+if($a->module != 'install' && $a->module != 'maintenance') {
 	nav($a);
 }
 
 /**
- * Build the page - now that we have all the components
+ * Add a "toggle mobile" link if we're using a mobile device
  */
-
-$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => current_theme_url()));
 
 if($a->is_mobile || $a->is_tablet) {
 	if(isset($_SESSION['show-mobile']) && !$_SESSION['show-mobile']) {
@@ -380,6 +418,18 @@ if($a->is_mobile || $a->is_tablet) {
 	                     	'$toggle_text' => t('toggle mobile')
     	                 ));
 }
+
+/**
+ * Build the page - now that we have all the components
+ */
+
+if(!$a->theme['stylesheet'])
+	$stylesheet = current_theme_url();
+else
+	$stylesheet = $a->theme['stylesheet'];
+
+$a->page['htmlhead'] = str_replace('{{$stylesheet}}',$stylesheet,$a->page['htmlhead']);
+//$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => $stylesheet));
 
 $page    = $a->page;
 $profile = $a->profile;

@@ -56,7 +56,7 @@ function poco_init(&$a) {
 			and uid in (select uid from pconfig where cat = 'system' and k = 'suggestme' and v = 1) ");
 	}
 	else {
-		$r = q("SELECT count(*) as `total` from `contact` where `uid` = %d and blocked = 0 and pending = 0 and hidden = 0
+		$r = q("SELECT count(*) as `total` from `contact` where `uid` = %d and blocked = 0 and pending = 0 and hidden = 0 and archive = 0
 			$sql_extra ",
 			intval($user['uid'])
 		);
@@ -81,7 +81,7 @@ function poco_init(&$a) {
 	}
 	else {
 
-		$r = q("SELECT * from `contact` where `uid` = %d and blocked = 0 and pending = 0 and hidden = 0
+		$r = q("SELECT * from `contact` where `uid` = %d and blocked = 0 and pending = 0 and hidden = 0 and archive = 0
 			$sql_extra LIMIT %d, %d",
 			intval($user['uid']),
 			intval($startIndex),
@@ -148,7 +148,7 @@ function poco_init(&$a) {
 	if($format === 'xml') {
 		header('Content-type: text/xml');
 		echo replace_macros(get_markup_template('poco_xml.tpl'),array_xmlify(array('$response' => $ret)));
-		http_status_exit(500);
+		killme();
 	}
 	if($format === 'json') {
 		header('Content-type: application/json');

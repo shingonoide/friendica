@@ -2,8 +2,11 @@
 
 
 require_once('include/security.php');
+require_once('include/datetime.php');
 
 function nuke_session() {
+	new_cookie(0); // make sure cookie is deleted on browser close, as a security measure
+
 	unset($_SESSION['authenticated']);
 	unset($_SESSION['uid']);
 	unset($_SESSION['visitor_id']);
@@ -59,7 +62,7 @@ if((isset($_SESSION)) && (x($_SESSION,'authenticated')) && ((! (x($_POST,'auth-p
 		}
 
 		$r = q("SELECT `user`.*, `user`.`pubkey` as `upubkey`, `user`.`prvkey` as `uprvkey` 
-		FROM `user` WHERE `uid` = %d AND `blocked` = 0 AND `account_expired` = 0 AND `verified` = 1 LIMIT 1",
+		FROM `user` WHERE `uid` = %d AND `blocked` = 0 AND `account_expired` = 0 AND `account_removed` = 0 AND `verified` = 1 LIMIT 1",
 			intval($_SESSION['uid'])
 		);
 
@@ -68,7 +71,18 @@ if((isset($_SESSION)) && (x($_SESSION,'authenticated')) && ((! (x($_POST,'auth-p
 			goaway(z_root());
 		}
 
-		authenticate_success($r[0]);
+		// Make sure to refresh the last login time for the user if the user
+		// stays logged in for a long time, e.g. with "Remember Me"
+		$login_refresh = false;
+		if(! x($_SESSION['last_login_date'])) {
+			$_SESSION['last_login_date'] = datetime_convert('UTC','UTC');
+		}
+		if( strcmp(datetime_convert('UTC','UTC','now - 12 hours'), $_SESSION['last_login_date']) > 0 ) {
+
+			$_SESSION['last_login_date'] = datetime_convert('UTC','UTC');
+			$login_refresh = true;
+		}
+		authenticate_success($r[0], false, false, $login_refresh);
 	}
 }
 else {
@@ -147,7 +161,7 @@ else {
 
 			$r = q("SELECT `user`.*, `user`.`pubkey` as `upubkey`, `user`.`prvkey` as `uprvkey`  
 				FROM `user` WHERE ( `email` = '%s' OR `nickname` = '%s' ) 
-				AND `password` = '%s' AND `blocked` = 0 AND `account_expired` = 0 AND `verified` = 1 LIMIT 1",
+				AND `password` = '%s' AND `blocked` = 0 AND `account_expired` = 0 AND `account_removed` = 0 AND `verified` = 1 LIMIT 1",
 				dbesc(trim($_POST['username'])),
 				dbesc(trim($_POST['username'])),
 				dbesc($encrypted)
@@ -162,10 +176,36 @@ else {
 			goaway(z_root());
   		}
 
+		// If the user specified to remember the authentication, then change the cookie
+		// to expire after one year (the default is when the browser is closed).
+		// If the user did not specify to remember, change the cookie to expire when the
+		// browser is closed. The reason this is necessary is because if the user
+		// specifies to remember, then logs out and logs back in without specifying to
+		// remember, the old "remember" cookie may remain and prevent the session from
+		// expiring when the browser is closed.
+		//
+		// It seems like I should be able to test for the old cookie, but for some reason when
+		// I read the lifetime value from session_get_cookie_params(), I always get '0'
+		// (i.e. expire when the browser is closed), even when there's a time expiration
+		// on the cookie
+		if($_POST['remember']) {
+			new_cookie(31449600); // one year
+		}
+		else {
+			new_cookie(0); // 0 means delete on browser exit
+		}
+
 		// if we haven't failed up this point, log them in.
 
+		$_SESSION['last_login_date'] = datetime_convert('UTC','UTC');
 		authenticate_success($record, true, true);
 	}
 }
 
+function new_cookie($time) {
+	$old_sid = session_id();
+	session_set_cookie_params("$time");
+	session_regenerate_id(false);
 
+	q("UPDATE session SET sid = '%s' WHERE sid = '%s'", dbesc(session_id()), dbesc($old_sid));
+}

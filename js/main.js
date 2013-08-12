@@ -103,9 +103,13 @@
 		});
 		
 		// fancyboxes
-		$("a.popupbox").fancybox({
+		/*$("a.popupbox").fancybox({
 			'transitionIn' : 'elastic',
 			'transitionOut' : 'elastic'
+		});*/
+		$("a.popupbox").colorbox({
+			'inline' : true,
+			'transition' : 'elastic'
 		});
 		
 
@@ -181,7 +185,17 @@
 					html = notifications_tpl.format(e.attr('href'),e.attr('photo'), text, e.attr('date'), e.attr('seen'));
 					nnm.append(html);
 				});
+
+				$("img[data-src]", nnm).each(function(i, el){
+					// Add src attribute for images with a data-src attribute
+					// However, don't bother if the data-src attribute is empty, because
+					// an empty "src" tag for an image will cause some browsers
+					// to prefetch the root page of the Friendica hub, which will
+					// unnecessarily load an entire profile/ or network/ page
+					if($(el).data("src") != '') $(el).attr('src', $(el).data("src"));
+				});
 			}
+
 			notif = eNotif.attr('count');
 			if (notif>0){
 				$("#nav-notifications-linkmenu").addClass("on");
@@ -202,8 +216,7 @@
 			});
 			
 		});
-		
-		
+
  		NavUpdate(); 
 		// Allow folks to stop the ajax page updates with the pause/break key
 		$(document).keydown(function(event) {
@@ -250,12 +263,13 @@
 					if($('#live-profile').length)   { src = 'profile'; liveUpdate(); }
 					if($('#live-community').length) { src = 'community'; liveUpdate(); }
 					if($('#live-notes').length)     { src = 'notes'; liveUpdate(); }
-					if($('#live-display').length) {
+					if($('#live-display').length)     { src = 'display'; liveUpdate(); }
+/*					if($('#live-display').length) {
 						if(liking) {
 							liking = 0;
 							window.location.href=window.location.href 
 						}
-					}
+					}*/
 					if($('#live-photos').length) { 
 						if(liking) {
 							liking = 0;
@@ -313,10 +327,26 @@
 					$('#' + prev).after($(this));
 				}
 				else {
+					// Find out if the hidden comments are open, so we can keep it that way
+					// if a new comment has been posted
+					var id = $('.hide-comments-total', this).attr('id');
+					if(typeof id != 'undefined') {
+						id = id.split('-')[3];
+						var commentsOpen = $("#collapsed-comments-" + id).is(":visible");
+					}
+
 					$('img',this).each(function() {
 						$(this).attr('src',$(this).attr('dst'));
 					});
+					//vScroll = $(document).scrollTop();
+					$('html').height($('html').height());
 					$('#' + ident).replaceWith($(this));
+
+					if(typeof id != 'undefined') {
+						if(commentsOpen) showHideComments(id);
+					}
+					$('html').height('auto');
+					//$(document).scrollTop(vScroll);
 				}
 				prev = ident;
 			});
@@ -355,6 +385,9 @@
 			}
 			/* autocomplete @nicknames */
 			$(".comment-edit-form  textarea").contact_autocomplete(baseurl+"/acl");
+
+			// setup videos, since VideoJS won't take care of any loaded via AJAX
+			if(typeof videojs != 'undefined') videojs.autoSetup();
 		});
 	}
 
@@ -503,6 +536,19 @@
 
 
 
+	function showHideComments(id) {
+		if( $("#collapsed-comments-" + id).is(":visible")) {
+			$("#collapsed-comments-" + id).hide();
+			$("#hide-comments-" + id).html(window.showMore);
+		}
+		else {
+			$("#collapsed-comments-" + id).show();
+			$("#hide-comments-" + id).html(window.showFewer);
+		}
+	}
+
+
+
 	function preview_post() {
 		$("#jot-preview").val("1");
 		$("#jot-preview-content").show();
@@ -635,9 +681,9 @@ function setupFieldRichtext(){
 		entity_encoding : "raw",
 		add_unload_trigger : false,
 		remove_linebreaks : false,
-		force_p_newlines : false,
-		force_br_newlines : true,
-		forced_root_block : '',
+		//force_p_newlines : false,
+		//force_br_newlines : true,
+		forced_root_block : 'div',
 		convert_urls: false,
 		content_css: baseurl+"/view/custom_tinymce.css",
 		theme_advanced_path : false,

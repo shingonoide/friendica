@@ -346,7 +346,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	$network = null;
 	$diaspora = false;
 	$diaspora_base = '';
-	$diaspora_guid = '';	
+	$diaspora_guid = '';
 	$diaspora_key = '';
 	$has_lrdd = false;
 	$email_conversant = false;
@@ -485,7 +485,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				}
 			}
 		}
-	}	
+	}
 
 	if($mode == PROBE_NORMAL) {
 		if(strlen($zot)) {
@@ -531,7 +531,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 		}
 		if(strpos($url,'@'))
 			$addr = str_replace('acct:', '', $url);
-	}			
+	}
 
 	if($network !== NETWORK_ZOT && $network !== NETWORK_DFRN && $network !== NETWORK_MAIL) {
 		if($diaspora)
@@ -544,13 +544,13 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			$vcard = scrape_vcard($hcard);
 
 			// Google doesn't use absolute url in profile photos
-	
+
 			if((x($vcard,'photo')) && substr($vcard['photo'],0,1) == '/') {
 				$h = @parse_url($hcard);
 				if($h)
 					$vcard['photo'] = $h['scheme'] . '://' . $h['host'] . $vcard['photo'];
 			}
-		
+
 			logger('probe_url: scrape_vcard: ' . print_r($vcard,true), LOGGER_DATA);
 		}
 
@@ -561,7 +561,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			$vcard['nick'] = $addr_parts[0];
 		}
 
-		if($twitter) {		
+		if($twitter) {
 			logger('twitter: setup');
 			$tid = basename($url);
 			$tapi = 'https://api.twitter.com/1/statuses/user_timeline.rss';
@@ -589,6 +589,12 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				$vcard['fn'] = $vcard['nick'];
 
 		$check_feed = false;
+
+		if(stristr($url,'tumblr.com') && (! stristr($url,'/rss'))) {
+			$poll = $url . '/rss';
+			$check_feed = true;
+			// Will leave it to others to figure out how to grab the avatar, which is on the $url page in the open graph meta links
+		}
 
 		if($twitter || ! $poll)
 			$check_feed = true;
@@ -618,7 +624,8 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 
 			logger('probe_url: scrape_feed: headers: ' . $a->get_curl_headers(), LOGGER_DATA);
 
-   			$feed->set_raw_data($xml);
+			// Don't try and parse an empty string
+   			$feed->set_raw_data(($xml) ? $xml : '<?xml version="1.0" encoding="utf-8" ?><xml></xml>');
 
 		    $feed->init();
 			if($feed->error())

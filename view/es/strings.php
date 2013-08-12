@@ -1,8 +1,9 @@
 <?php
 
+if(! function_exists("string_plural_select_es")) {
 function string_plural_select_es($n){
 	return ($n != 1);;
-}
+}}
 ;
 $a->strings["Post successful."] = "¡Publicado!";
 $a->strings["[Embedded content - reload page to view]"] = "[Contenido incrustado - recarga la página para verlo]";
@@ -242,7 +243,7 @@ $a->strings["Error: GD graphics PHP module with JPEG support required but not in
 $a->strings["Error: openssl PHP module required but not installed."] = "Error: El módulo de PHP openssl es necesario, pero  no está instalado.";
 $a->strings["Error: mysqli PHP module required but not installed."] = "Error: El módulo de PHP mysqli es necesario, pero no está instalado.";
 $a->strings["Error: mb_string PHP module required but not installed."] = "Error: El módulo de PHP mb_string es necesario, pero no está instalado.";
-$a->strings["The web installer needs to be able to create a file called \".htconfig.php\ in the top folder of your web server and it is unable to do so."] = "El programa de instalación web necesita ser capaz de crear un archivo llamado \".htconfig.php\" en la carpeta principal de tu servidor web y es incapaz de hacerlo.";
+$a->strings["The web installer needs to be able to create a file called \".htconfig.php\" in the top folder of your web server and it is unable to do so."] = "El programa de instalación web necesita ser capaz de crear un archivo llamado \".htconfig.php\" en la carpeta principal de tu servidor web y es incapaz de hacerlo.";
 $a->strings["This is most often a permission setting, as the web server may not be able to write files in your folder - even if you can."] = "Se trata a menudo de una configuración de permisos, pues el servidor web puede que no sea capaz de escribir archivos en la carpeta, aunque tú sí puedas.";
 $a->strings["At the end of this procedure, we will give you a text to save in a file named .htconfig.php in your Friendica top folder."] = "Al final obtendremos un texto que debes guardar en un archivo llamado .htconfig.php en la carpeta de Friendica.";
 $a->strings["You can alternatively skip this procedure and perform a manual installation. Please see the file \"INSTALL.txt\" for instructions."] = "Como alternativa, puedes saltarte estos pasos y realizar una instalación manual. Por favor, consulta el archivo \"INSTALL.txt\" para las instrucciones.";
@@ -255,7 +256,7 @@ $a->strings["<h1>What next</h1>"] = "<h1>¿Ahora qué?</h1>";
 $a->strings["IMPORTANT: You will need to [manually] setup a scheduled task for the poller."] = "IMPORTANTE: Tendrás que configurar [manualmente] una tarea programada para el sondeo";
 $a->strings["l F d, Y \\@ g:i A"] = "l F d, Y \\@ g:i A";
 $a->strings["Time Conversion"] = "Conversión horária";
-$a->strings["Friendika provides this service for sharing events with other networks and friends in unknown timezones."] = "Friendica ofrece este servicio para compartir eventos con otras redes y amigos en zonas horarias desconocidas.";
+$a->strings["Friendica provides this service for sharing events with other networks and friends in unknown timezones."] = "";
 $a->strings["UTC time: %s"] = "Tiempo UTC: %s";
 $a->strings["Current timezone: %s"] = "Zona horaria actual: %s";
 $a->strings["Converted localtime: %s"] = "Zona horaria local convertida: %s";
@@ -443,7 +444,7 @@ $a->strings["Enter your email address and submit to have your password reset. Th
 $a->strings["Nickname or Email: "] = "Apodo o Correo electrónico: ";
 $a->strings["Reset"] = "Restablecer";
 $a->strings["Account settings"] = "Configuración de tu cuenta";
-$a->strings["Display settings"] = "Mostrar configuración";
+$a->strings["Display settings"] = "Configuración Tema/Visualización";
 $a->strings["Connector settings"] = "Configuración del conector";
 $a->strings["Plugin settings"] = "Configuración de los módulos";
 $a->strings["Connected apps"] = "Aplicaciones conectadas";
@@ -499,7 +500,7 @@ $a->strings["Mark as seen"] = "Marcar como leído";
 $a->strings["Move to folder"] = "Mover a un directorio";
 $a->strings["Move to folder:"] = "Mover al directorio:";
 $a->strings["No special theme for mobile devices"] = "No hay tema especial para dispositivos móviles";
-$a->strings["Display Settings"] = "Mostrar Configuración";
+$a->strings["Display Settings"] = "Configuración Tema/Visualización";
 $a->strings["Display Theme:"] = "Utilizar tema:";
 $a->strings["Mobile Theme:"] = "Tema móvil:";
 $a->strings["Update browser every xx seconds"] = "Actualizar navegador cada xx segundos";

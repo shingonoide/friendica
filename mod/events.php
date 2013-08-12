@@ -156,11 +156,21 @@ function events_content(&$a) {
 	}
 
 
+	$editselect = 'none';
+	if( feature_enabled(local_user(), 'richtext') )
+		$editselect = 'textareas';
+
 	$htpl = get_markup_template('event_head.tpl');
-	$a->page['htmlhead'] .= replace_macros($htpl,array('$baseurl' => $a->get_baseurl()));
+	$a->page['htmlhead'] .= replace_macros($htpl,array(
+		'$baseurl' => $a->get_baseurl(),
+		'$editselect' => $editselect
+	));
 
 	$etpl = get_markup_template('event_end.tpl');
-	$a->page['end'] .= replace_macros($etpl,array('$baseurl' => $a->get_baseurl()));
+	$a->page['end'] .= replace_macros($etpl,array(
+		'$baseurl' => $a->get_baseurl(),
+		'$editselect' => $editselect
+	));
 
 	$o ="";
 	// tabs
@@ -250,12 +260,14 @@ function events_content(&$a) {
 			$r = q("SELECT `event`.*, `item`.`id` AS `itemid`,`item`.`plink`,
 				`item`.`author-name`, `item`.`author-avatar`, `item`.`author-link` FROM `event` LEFT JOIN `item` ON `item`.`event-id` = `event`.`id` 
 				WHERE `event`.`uid` = %d and event.ignore = %d
-				AND (( `adjust` = 0 AND `finish` >= '%s' AND `start` <= '%s' ) 
-				OR  (  `adjust` = 1 AND `finish` >= '%s' AND `start` <= '%s' )) ",
+				AND (( `adjust` = 0 AND ( `finish` >= '%s' OR ( nofinish AND start >= '%s' ) ) AND `start` <= '%s' ) 
+				OR  (  `adjust` = 1 AND ( `finish` >= '%s' OR ( nofinish AND start >= '%s' ) ) AND `start` <= '%s' )) ",
 				intval(local_user()),
 				intval($ignored),
 				dbesc($start),
+				dbesc($start),
 				dbesc($finish),
+				dbesc($adjust_start),
 				dbesc($adjust_start),
 				dbesc($adjust_finish)
 			);
@@ -341,6 +353,17 @@ function events_content(&$a) {
 //				$tpl = get_markup_template("events.tpl");
 //			}
 		}
+
+		// Get rid of dashes in key names, Smarty3 can't handle them
+		foreach($events as $key => $event) {
+			$event_item = array();
+			foreach($event['item'] as $k => $v) {
+				$k = str_replace('-','_',$k);
+				$event_item[$k] = $v;
+			}
+			$events[$key]['item'] = $event_item;
+		}
+
 		$o = replace_macros($tpl, array(
 			'$baseurl'	=> $a->get_baseurl(),
 			'$tabs'		=> $tabs,

@@ -1,5 +1,7 @@
 <?php
 
+require_once('include/email.php');
+
 if(! function_exists('register_post')) {
 function register_post(&$a) {
 
@@ -42,6 +44,7 @@ function register_post(&$a) {
 		$verified = 0;
 		break;
 	}
+    
 
 	require_once('include/user.php');
 
@@ -85,9 +88,9 @@ function register_post(&$a) {
 				'$password' => $result['password'],
 				'$uid' => $user['uid'] ));
 
-		$res = mail($user['email'], sprintf(t('Registration details for %s'), $a->config['sitename']),
+		$res = mail($user['email'], email_header_encode( sprintf( t('Registration details for %s'), $a->config['sitename']),'UTF-8'),
 			$email_tpl, 
-				'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
+				'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
 				. 'Content-type: text/plain; charset=UTF-8' . "\n"
 				. 'Content-transfer-encoding: 8bit' );
 
@@ -139,9 +142,9 @@ function register_post(&$a) {
 				'$hash' => $hash
 		 ));
 
-		$res = mail($a->config['admin_email'], sprintf(t('Registration request at %s'), $a->config['sitename']),
+		$res = mail($a->config['admin_email'], email_header_encode( sprintf(t('Registration request at %s'), $a->config['sitename']),'UTF-8'),
 			$email_tpl,
-				'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
+				'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
 				. 'Content-type: text/plain; charset=UTF-8' . "\n"
 				. 'Content-transfer-encoding: 8bit' );
 
@@ -234,10 +237,9 @@ function register_content(&$a) {
 			'$yes_selected' => ' checked="checked" ',
 			'$no_selected'  => '',
 			'$str_yes'      => t('Yes'),
-			'$str_no'       => t('No')
+			'$str_no'       => t('No'),
 		));
 	}
-
 
 	$license = '';
 
@@ -266,7 +268,7 @@ function register_content(&$a) {
 		'$openid'    => $openid_url,
 		'$namelabel' => t('Your Full Name ' . "\x28" . 'e.g. Joe Smith' . "\x29" . ': '),
 		'$addrlabel' => t('Your Email Address: '),
-		'$nickdesc'  => t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@$sitename</strong>\'.'),
+		'$nickdesc'  => str_replace('$sitename',$a->get_hostname(),t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@$sitename</strong>\'.')),
 		'$nicklabel' => t('Choose a nickname: '),
 		'$photo'     => $photo,
 		'$publish'   => $profile_publish,
@@ -275,7 +277,8 @@ function register_content(&$a) {
 		'$email'     => $email,
 		'$nickname'  => $nickname,
 		'$license'   => $license,
-		'$sitename'  => $a->get_hostname()
+		'$sitename'  => $a->get_hostname(),
+      
 	));
 	return $o;
 

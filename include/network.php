@@ -7,13 +7,20 @@
 if(! function_exists('fetch_url')) {
 function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_content=Null) {
 
+	$stamp1 = microtime(true);
+
 	$a = get_app();
 
 	$ch = @curl_init($url);
-	if(($redirects > 8) || (! $ch)) 
+	if(($redirects > 8) || (! $ch))
 		return false;
 
 	@curl_setopt($ch, CURLOPT_HEADER, true);
+
+
+//  These settings aren't needed. We're following the location already. 
+//	@curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+//	@curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
 
 	if (!is_null($accept_content)){
 		curl_setopt($ch,CURLOPT_HTTPHEADER, array (
@@ -73,23 +80,35 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	}
 
 	if($http_code == 301 || $http_code == 302 || $http_code == 303 || $http_code == 307) {
+		$new_location_info = @parse_url($curl_info["redirect_url"]);
+		$old_location_info = @parse_url($curl_info["url"]);
+
+		$newurl = $curl_info["redirect_url"];
+
+		if (($new_location_info["path"] == "") AND ($new_location_info["host"] != ""))
+			$newurl = $new_location_info["scheme"]."://".$new_location_info["host"].$old_location_info["path"];
+
 		$matches = array();
-		preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches);
-		$newurl = trim(array_pop($matches));
+		if (preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches)) {
+			$newurl = trim(array_pop($matches));
+		}
 		if(strpos($newurl,'/') === 0)
-			$newurl = $url . $newurl;
-		$url_parsed = @parse_url($newurl);
-		if (isset($url_parsed)) {
+			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
+		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
 			return fetch_url($newurl,$binary,$redirects,$timeout);
 		}
 	}
 
 	$a->set_curl_code($http_code);
+	$a->set_curl_content_type($curl_info['content_type']);
 
 	$body = substr($s,strlen($header));
 	$a->set_curl_headers($header);
 	@curl_close($ch);
+
+	$a->save_timestamp($stamp1, "network");
+
 	return($body);
 }}
 
@@ -97,9 +116,12 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 if(! function_exists('post_url')) {
 function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) {
+
+	$stamp1 = microtime(true);
+
 	$a = get_app();
 	$ch = curl_init($url);
-	if(($redirects > 8) || (! $ch)) 
+	if(($redirects > 8) || (! $ch))
 		return false;
 
 	curl_setopt($ch, CURLOPT_HEADER, true);
@@ -166,9 +188,8 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
         preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches);
         $newurl = trim(array_pop($matches));
 		if(strpos($newurl,'/') === 0)
-			$newurl = $url . $newurl;
-        $url_parsed = @parse_url($newurl);
-        if (isset($url_parsed)) {
+			$newurl = $old_location_info["scheme"] . "://" . $old_location_info["host"] . $newurl;
+        if (filter_var($newurl, FILTER_VALIDATE_URL)) {
             $redirects++;
             return fetch_url($newurl,false,$redirects,$timeout);
         }
@@ -179,6 +200,9 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 	$a->set_curl_headers($header);
 
 	curl_close($ch);
+
+	$a->save_timestamp($stamp1, "network");
+
 	return($body);
 }}
 
@@ -288,9 +312,9 @@ function webfinger_dfrn($s,&$hcard) {
 			if($link['@attributes']['rel'] === NAMESPACE_DFRN)
 				$profile_link = $link['@attributes']['href'];
 			if($link['@attributes']['rel'] === NAMESPACE_OSTATUSSUB)
-				$profile_link = 'stat:' . $link['@attributes']['template'];	
+				$profile_link = 'stat:' . $link['@attributes']['template'];
 			if($link['@attributes']['rel'] === 'http://microformats.org/profile/hcard')
-				$hcard = $link['@attributes']['href'];				
+				$hcard = $link['@attributes']['href'];
 		}
 	}
 	return $profile_link;
@@ -356,6 +380,7 @@ function lrdd($uri, $debug = false) {
 	logger('lrdd: constructed url: ' . $url);
 
 	$xml = fetch_url($url);
+
 	$headers = $a->get_curl_headers();
 
 	if (! $xml)
@@ -405,7 +430,7 @@ function lrdd($uri, $debug = false) {
 				elseif(x($link['@attributes'],'href'))
 					$href = $link['@attributes']['href'];
 			}
-		}		
+		}
 	}
 
 	if((! isset($tpl)) || (! strpos($tpl,'{uri}')))
@@ -424,7 +449,7 @@ function lrdd($uri, $debug = false) {
 
 		$lines = explode("\n",$headers);
 		if(count($lines)) {
-			foreach($lines as $line) {				
+			foreach($lines as $line) {
 				if((stristr($line,'link:')) && preg_match('/<([^>].*)>.*rel\=[\'\"]lrdd[\'\"]/',$line,$matches)) {
 					return(fetch_xrd_links($matches[1]));
 					break;
@@ -470,7 +495,7 @@ function lrdd($uri, $debug = false) {
 
 	$lines = explode("\n",$headers);
 	if(count($lines)) {
-		foreach($lines as $line) {				
+		foreach($lines as $line) {
 			// TODO alter the following regex to support multiple relations (space separated)
 			if((stristr($line,'link:')) && preg_match('/<([^>].*)>.*rel\=[\'\"]lrdd[\'\"]/',$line,$matches)) {
 				$pagelink = $matches[1];
@@ -586,14 +611,14 @@ function fetch_xrd_links($url) {
 
 if(! function_exists('validate_url')) {
 function validate_url(&$url) {
-	
+
 	// no naked subdomains (allow localhost for tests)
 	if(strpos($url,'.') === false && strpos($url,'/localhost/') === false)
 		return false;
 	if(substr($url,0,4) != 'http')
 		$url = 'http://' . $url;
 	$h = @parse_url($url);
-	
+
 	if(($h) && (dns_get_record($h['host'], DNS_A + DNS_CNAME + DNS_PTR) || filter_var($h['host'], FILTER_VALIDATE_IP) )) {
 		return true;
 	}
@@ -794,12 +819,12 @@ function add_fcontact($arr,$update = false) {
 }
 
 
-function scale_external_images($s, $include_link = true, $scale_replace = false) {
+function scale_external_images($srctext, $include_link = true, $scale_replace = false) {
 
 	$a = get_app();
 
 	// Picture addresses can contain special characters
-	$s = htmlspecialchars_decode($s);
+	$s = htmlspecialchars_decode($srctext);
 
 	$matches = null;
 	$c = preg_match_all('/\[img.*?\](.*?)\[\/img\]/ism',$s,$matches,PREG_SET_ORDER);
@@ -821,17 +846,20 @@ function scale_external_images($s, $include_link = true, $scale_replace = false)
 				$scaled = str_replace($scale_replace[0], $scale_replace[1], $mtch[1]);
 			else
 				$scaled = $mtch[1];
-			$i = fetch_url($scaled);
+			$i = @fetch_url($scaled);
+			if(! $i)
+				return $srctext;
 
-			$cache = get_config('system','itemcache');
-			if (($cache != '') and is_dir($cache)) {
-				$cachefile = $cache."/".hash("md5", $scaled);
+			$cachefile = get_cachefile(hash("md5", $scaled));
+			if ($cachefile != '') {
+				$stamp1 = microtime(true);
 				file_put_contents($cachefile, $i);
+				$a->save_timestamp($stamp1, "file");
 			}
 
 			// guess mimetype from headers or filename
 			$type = guess_image_type($mtch[1],true);
-			
+
 			if($i) {
 				$ph = new Photo($i, $type);
 				if($ph->is_valid()) {
@@ -856,8 +884,7 @@ function scale_external_images($s, $include_link = true, $scale_replace = false)
 	}
 
 	// replace the special char encoding
-
-	$s = htmlspecialchars($s,ENT_QUOTES,'UTF-8');
+	$s = htmlspecialchars($s,ENT_NOQUOTES,'UTF-8');
 	return $s;
 }
 
@@ -918,7 +945,7 @@ function fix_contact_ssl_policy(&$contact,$new_policy) {
  * Return: The parsed XML in an array form. Use print_r() to see the resulting array structure.
  * Examples: $array =  xml2array(file_get_contents('feed.xml'));
  *              $array =  xml2array(file_get_contents('feed.xml', true, 1, 'attribute'));
- */ 
+ */
 
 function xml2array($contents, $namespaces = true, $get_attributes=1, $priority = 'attribute') {
     if(!$contents) return array();
@@ -976,7 +1003,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
         $result = array();
         $attributes_data = array();
-        
+
         if(isset($value)) {
             if($priority == 'tag') $result = $value;
             else $result['value'] = $value; // Put the value in a assoc array if we are in the 'Attribute' mode
@@ -992,7 +1019,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
         // See tag status and do the needed.
 		if($namespaces && strpos($tag,':')) {
-			$namespc = substr($tag,0,strrpos($tag,':')); 
+			$namespc = substr($tag,0,strrpos($tag,':'));
 			$tag = strtolower(substr($tag,strlen($namespc)+1));
 			$result['@namespace'] = $namespc;
 		}
@@ -1015,7 +1042,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
                 } else { // This section will make the value an array if multiple tags with the same name appear together
                     $current[$tag] = array($current[$tag],$result); // This will combine the existing item and the new item together to make an array
                     $repeated_tag_index[$tag.'_'.$level] = 2;
-                    
+
                     if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
                         $current[$tag]['0_attr'] = $current[$tag.'_attr'];
                         unset($current[$tag.'_attr']);
@@ -1038,7 +1065,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
                     // ...push the new element into that array.
                     $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
-                    
+
                     if($priority == 'tag' and $get_attributes and $attributes_data) {
                         $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
                     }
@@ -1049,11 +1076,11 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
                     $repeated_tag_index[$tag.'_'.$level] = 1;
                     if($priority == 'tag' and $get_attributes) {
                         if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
-                            
+
                             $current[$tag]['0_attr'] = $current[$tag.'_attr'];
                             unset($current[$tag.'_attr']);
                         }
-                        
+
                         if($attributes_data) {
                             $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
                         }
@@ -1066,6 +1093,6 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
             $current = &$parent[$level-1];
         }
     }
-    
+
     return($xml_array);
-}  
+}

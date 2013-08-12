@@ -242,6 +242,20 @@ CREATE TABLE IF NOT EXISTS `deliverq` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `dsprphotoq`
+--
+
+CREATE TABLE `dsprphotoq` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `uid` int(11) NOT NULL,
+  `msg` mediumtext NOT NULL,
+  `attempt` tinyint(4) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `event`
 --
 
@@ -546,6 +560,7 @@ CREATE TABLE IF NOT EXISTS `item` (
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
   `origin` tinyint(1) NOT NULL DEFAULT '0',
   `forum_mode` tinyint(1) NOT NULL DEFAULT '0',
+  `mention` tinyint(1) NOT NULL DEFAULT '0',
   `last-child` tinyint(1) unsigned NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
   KEY `uri` (`uri`),
@@ -575,6 +590,9 @@ CREATE TABLE IF NOT EXISTS `item` (
   KEY `uid_commented` (`uid`, `commented`),
   KEY `uid_created` (`uid`, `created`),
   KEY `uid_unseen` (`uid`, `unseen`),
+  KEY `mention` (`mention`),
+  KEY `resource-id` (`resource-id`),
+  KEY `event_id` (`event-id`),
   FULLTEXT KEY `title` (`title`),
   FULLTEXT KEY `body` (`body`),
   FULLTEXT KEY `allow_cid` (`allow_cid`),
@@ -777,6 +795,7 @@ CREATE TABLE IF NOT EXISTS `photo` (
   `type` CHAR(128) NOT NULL DEFAULT 'image/jpeg',
   `height` smallint(6) NOT NULL,
   `width` smallint(6) NOT NULL,
+  `datasize` int(10) unsigned NOT NULL DEFAULT '0',
   `data` mediumblob NOT NULL,
   `scale` tinyint(3) NOT NULL,
   `profile` tinyint(1) NOT NULL DEFAULT '0',
@@ -789,6 +808,7 @@ CREATE TABLE IF NOT EXISTS `photo` (
   KEY `resource-id` (`resource-id`),
   KEY `album` (`album`),
   KEY `scale` (`scale`),
+  KEY `datasize` (`datasize`),
   KEY `profile` (`profile`)
 ) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
@@ -1013,18 +1033,22 @@ CREATE TABLE IF NOT EXISTS `spam` (
 --
 
 CREATE TABLE IF NOT EXISTS `term` (
-  `tid` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `oid` INT UNSIGNED NOT NULL ,
-  `otype` TINYINT( 3 ) UNSIGNED NOT NULL ,
-  `type` TINYINT( 3 ) UNSIGNED NOT NULL ,
-  `term` CHAR( 255 ) NOT NULL ,
-  `url` CHAR( 255 ) NOT NULL, 
+  `tid` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `aid` int(10) unsigned NOT NULL DEFAULT '0',
+  `uid` int(10) unsigned NOT NULL DEFAULT '0',
+  `oid` int(10) unsigned NOT NULL,
+  `otype` tinyint(3) unsigned NOT NULL,
+  `type` tinyint(3) unsigned NOT NULL,
+  `term` char(255) NOT NULL,
+  `url` char(255) NOT NULL,
   PRIMARY KEY (`tid`),
-  KEY `oid` ( `oid` ),
-  KEY `otype` ( `otype` ),
-  KEY `type`  ( `type` ),
-  KEY `term`  ( `term` )
-) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+  KEY `oid` (`oid`),
+  KEY `otype` (`otype`),
+  KEY `type` (`type`),
+  KEY `term` (`term`),
+  KEY `uid` (`uid`),
+  KEY `aid` (`aid`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 -- --------------------------------------------------------
 
@@ -1115,4 +1139,18 @@ CREATE TABLE IF NOT EXISTS `userd` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `username` char(255) NOT NULL,
   PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tag`
+--
+
+CREATE TABLE IF NOT EXISTS `tag` (
+  `iid` int(11) NOT NULL,
+  `tag` char(255) NOT NULL,
+  `link` char(255) NOT NULL,
+  PRIMARY KEY (`iid`, `tag`),
+  KEY `tag` (`tag`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;

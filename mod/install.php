@@ -32,7 +32,7 @@ function install_post(&$a) {
 			$dbdata = notags(trim($_POST['dbdata']));
 			$phpath = notags(trim($_POST['phpath']));
 
-			require_once("dba.php");
+			require_once("include/dba.php");
 			unset($db);
 			$db = new dba($dbhost, $dbuser, $dbpass, $dbdata, true);
 			/*if(get_db_errno()) {
@@ -114,7 +114,7 @@ function install_content(&$a) {
 	global $install_wizard_pass, $db;
 	$o = '';
 	$wizard_status = "";
-	$install_title = t('Friendica Social Communications Server - Setup');
+	$install_title = t('Friendica Communications Server - Setup');
 	
 
 	
@@ -176,6 +176,8 @@ function install_content(&$a) {
 			check_funcs($checks);
 
 			check_htconfig($checks);
+
+			check_smarty3($checks);
 
 			check_keys($checks);
 			
@@ -249,7 +251,7 @@ function install_content(&$a) {
 			return $o;
 		}; break;
 		case 3: { // Site settings
-			require_once('datetime.php');
+			require_once('include/datetime.php');
 			$dbhost = ((x($_POST,'dbhost')) ? notags(trim($_POST['dbhost'])) : 'localhost');
 			$dbuser = notags(trim($_POST['dbuser']));
 			$dbpass = notags(trim($_POST['dbpass']));
@@ -307,6 +309,7 @@ function check_add(&$checks, $title, $status, $required, $help){
 }
 
 function check_php(&$phpath, &$checks) {
+	$passed = $passed2 = $passed3 = false;
 	if (strlen($phpath)){
 		$passed = file_exists($phpath);
 	} else {
@@ -328,16 +331,30 @@ function check_php(&$phpath, &$checks) {
 	check_add($checks, t('Command line PHP').($passed?" (<tt>$phpath</tt>)":""), $passed, false, $help);
 	
 	if($passed) {
+		$cmd = "$phpath -v";
+		$result = trim(shell_exec($cmd));
+		$passed2 = ( strpos($result, "(cli)") !== false );
+		list($result) = explode("\n", $result);
+		$help = "";
+		if(!$passed2) {
+			$help .= t('PHP executable is not the php cli binary (could be cgi-fgci version)'). EOL;
+			$help .= t('Found PHP version: ')."<tt>$result</tt>";
+		}
+		check_add($checks, t('PHP cli binary'), $passed2, true, $help);
+	}
+	
+	
+	if($passed2) {
 		$str = autoname(8);
 		$cmd = "$phpath testargs.php $str";
 		$result = trim(shell_exec($cmd));
-		$passed2 = $result == $str;
+		$passed3 = $result == $str;
 		$help = "";
-		if(!$passed2) {
+		if(!$passed3) {
 			$help .= t('The command line version of PHP on your system does not have "register_argc_argv" enabled.'). EOL;
 			$help .= t('This is required for message delivery to work.');
 		}
-		check_add($checks, t('PHP register_argc_argv'), $passed, true, $help);
+		check_add($checks, t('PHP register_argc_argv'), $passed3, true, $help);
 	}
 	
 
@@ -425,6 +442,22 @@ function check_htconfig(&$checks) {
 	}
     
 	check_add($checks, t('.htconfig.php is writable'), $status, false, $help);
+
+}
+
+function check_smarty3(&$checks) {
+	$status = true;
+	$help = "";
+	if(	!is_writable('view/smarty3') ) {
+	
+		$status=false;
+		$help = t('Friendica uses the Smarty3 template engine to render its web views. Smarty3 compiles templates to PHP to speed up rendering.') .EOL;
+		$help .= t('In order to store these compiled templates, the web server needs to have write access to the directory view/smarty3/ under the Friendica top level folder.').EOL;
+		$help .= t('Please ensure that the user that your web server runs as (e.g. www-data) has write access to this folder.').EOL;
+		$help .= t('Note: as a security measure, you should give the web server write access to view/smarty3/ only--not the template files (.tpl) that it contains.').EOL; 
+	}
+    
+	check_add($checks, t('view/smarty3 is writable'), $status, true, $help);
 
 }
 

@@ -1,6 +1,7 @@
 <?php
 
 require_once("include/bbcode.php");
+require_once("include/acl_selectors.php");
 
 
 // Note: the code in 'item_extract_images' and 'item_redir_and_replace_images'
@@ -368,14 +369,25 @@ function visible_activity($item) {
 if(!function_exists('conversation')) {
 function conversation(&$a, $items, $mode, $update, $preview = false) {
 
-
-	require_once('bbcode.php');
+	require_once('include/bbcode.php');
 
 	$ssl_state = ((local_user()) ? true : false);
 
 	$profile_owner = 0;
 	$page_writeable = false;
 	$live_update_div = '';
+
+	$arr_blocked = null;
+
+	if(local_user()) {
+		$str_blocked = get_pconfig(local_user(),'system','blocked');
+		if($str_blocked) {
+			$arr_blocked = explode(',',$str_blocked);
+			for($x = 0; $x < count($arr_blocked); $x ++)
+				$arr_blocked[$x] = trim($arr_blocked[$x]);
+		}
+
+	}
 
 	$previewing = (($preview) ? ' preview ' : '');
 
@@ -413,6 +425,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 
 		if(!$update) {
 			$tab = notags(trim($_GET['tab']));
+			$tab = ( $tab ? $tab : 'posts' );
 			if($tab === 'posts') {
 				// This is ugly, but we can't pass the profile_uid through the session to the ajax updater,
 				// because browser prefetching might change it on us. We have to deliver it with the page.
@@ -435,7 +448,11 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 	else if($mode === 'display') {
 		$profile_owner = $a->profile['uid'];
 		$page_writeable = can_write_wall($a,$profile_owner);
-		$live_update_div = '<div id="live-display"></div>' . "\r\n";
+		if(!$update) {
+			$live_update_div = '<div id="live-display"></div>' . "\r\n"
+				. "<script> var profile_uid = " . $_SESSION['uid'] . ";"
+				. " var profile_page = 1; </script>";
+		}
 	}
 	else if($mode === 'community') {
 		$profile_owner = 0;
@@ -488,6 +505,19 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 			$tpl = 'search_item.tpl';
 
 			foreach($items as $item) {
+				if($arr_blocked) {
+					$blocked = false;
+					foreach($arr_blocked as $b) {
+						if($b && link_compare($item['author-link'],$b)) {
+							$blocked = true;
+							break;
+						}
+					}
+					if($blocked)
+						continue;
+				}
+							
+
 				$threadsid++;
 
 				$comment     = '';
@@ -518,7 +548,26 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				$tags=array();
 				$hashtags = array();
 				$mentions = array();
-				foreach(explode(',',$item['tag']) as $tag){
+
+				$taglist = q("SELECT `type`, `term`, `url` FROM `term` WHERE `otype` = %d AND `oid` = %d AND `type` IN (%d, %d) ORDER BY `tid`",
+						intval(TERM_OBJ_POST), intval($item['id']), intval(TERM_HASHTAG), intval(TERM_MENTION));
+
+				foreach($taglist as $tag) {
+
+					if ($tag["url"] == "")
+						$tag["url"] = $searchpath.strtolower($tag["term"]);
+
+					if ($tag["type"] == TERM_HASHTAG) {
+						$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+						$prefix = "#";
+					} elseif ($tag["type"] == TERM_MENTION) {
+						$mentions[] = "@<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+						$prefix = "@";
+					}
+					$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+				}
+
+				/*foreach(explode(',',$item['tag']) as $tag){
 					$tag = trim($tag);
 					if ($tag!="") {
 						$t = bbcode($tag);
@@ -528,7 +577,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 						elseif($t[0] == '@')
 							$mentions[] = $t;
 					}
-				}
+				}*/
 
 				$sp = false;
 				$profile_link = best_link_url($item,$sp);
@@ -576,33 +625,54 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 
 				list($categories, $folders) = get_cats_and_terms($item);
 
+				if($a->theme['template_engine'] === 'internal') {
+					$profile_name_e = template_escape($profile_name);
+					$item['title_e'] = template_escape($item['title']);
+					$body_e = template_escape($body);
+					$tags_e = template_escape($tags);
+					$hashtags_e = template_escape($hashtags);
+					$mentions_e = template_escape($mentions);
+					$location_e = template_escape($location);
+					$owner_name_e = template_escape($owner_name);
+				}
+				else {
+					$profile_name_e = $profile_name;
+					$item['title_e'] = $item['title'];
+					$body_e = $body;
+					$tags_e = $tags;
+					$hashtags_e = $hashtags;
+					$mentions_e = $mentions;
+					$location_e = $location;
+					$owner_name_e = $owner_name;
+				}
+
 				$tmp_item = array(
 					'template' => $tpl,
 					'id' => (($preview) ? 'P0' : $item['item_id']),
 					'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 					'profile_url' => $profile_link,
 					'item_photo_menu' => item_photo_menu($item),
-					'name' => template_escape($profile_name),
+					'name' => $profile_name_e,
 					'sparkle' => $sparkle,
 					'lock' => $lock,
 					'thumb' => $profile_avatar,
-					'title' => template_escape($item['title']),
-					'body' => template_escape($body),
-					'tags' => template_escape($tags),
-					'hashtags' => template_escape($hashtags),
-					'mentions' => template_escape($mentions),
+					'title' => $item['title_e'],
+					'body' => $body_e,
+					'tags' => $tags_e,
+					'hashtags' => $hashtags_e,
+					'mentions' => $mentions_e,
 					'txt_cats' => t('Categories:'),
 					'txt_folders' => t('Filed under:'),
 					'has_cats' => ((count($categories)) ? 'true' : ''),
 					'has_folders' => ((count($folders)) ? 'true' : ''),
 					'categories' => $categories,
 					'folders' => $folders,
-					'text' => strip_tags(template_escape($body)),
+					'text' => strip_tags($body_e),
 					'localtime' => datetime_convert('UTC', date_default_timezone_get(), $item['created'], 'r'),
 					'ago' => (($item['app']) ? sprintf( t('%s from %s'),relative_date($item['created']),$item['app']) : relative_date($item['created'])),
-					'location' => template_escape($location),
+					'location' => $location_e,
 					'indent' => '',
-					'owner_name' => template_escape($owner_name),
+					'owner_name' => $owner_name_e,
 					'owner_url' => $owner_url,
 					'owner_photo' => $owner_photo,
 					'plink' => get_plink($item),
@@ -646,6 +716,21 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 			$threads = array();
 			foreach($items as $item) {
 
+				if($arr_blocked) {
+					$blocked = false;
+					foreach($arr_blocked as $b) {
+						
+						if($b && link_compare($item['author-link'],$b)) {
+							$blocked = true;
+							break;
+						}
+					}
+					if($blocked)
+						continue;
+				}
+							
+
+
 				// Can we put this after the visibility check?
 				like_puller($a,$item,$alike,'like');
 				like_puller($a,$item,$dlike,'dislike');
@@ -657,6 +742,8 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				if(! visible_activity($item)) {
 					continue;
 				}
+
+				call_hooks('display_item', $arr);
 
 				$item['pagedrop'] = $page_dropping;
 
@@ -676,12 +763,13 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 
 	$o = replace_macros($page_template, array(
 		'$baseurl' => $a->get_baseurl($ssl_state),
+		'$return_path' => $a->query_string,
 		'$live_update' => $live_update_div,
 		'$remove' => t('remove'),
 		'$mode' => $mode,
 		'$user' => $a->user,
 		'$threads' => $threads,
-		'$dropping' => ($page_dropping?t('Delete Selected Items'):False),
+		'$dropping' => ($page_dropping && feature_enabled(local_user(),'multi_delete') ? t('Delete Selected Items') : False),
 	));
 
 	return $o;
@@ -765,7 +853,7 @@ function item_photo_menu($item){
 	if(($cid) && (! $item['self'])) {
 		$poke_link = $a->get_baseurl($ssl_state) . '/poke/?f=&c=' . $cid;
 		$contact_url = $a->get_baseurl($ssl_state) . '/contacts/' . $cid;
-		$posts_link = $a->get_baseurl($ssl_state) . '/network/?cid=' . $cid;
+		$posts_link = $a->get_baseurl($ssl_state) . '/network/0?nets=all&cid=' . $cid;
 
 		$clean_url = normalise_link($item['author-link']);
 
@@ -851,22 +939,36 @@ function format_like($cnt,$arr,$type,$id) {
 	if($cnt == 1)
 		$o .= (($type === 'like') ? sprintf( t('%s likes this.'), $arr[0]) : sprintf( t('%s doesn\'t like this.'), $arr[0])) . EOL ;
 	else {
-		$spanatts = 'class="fakelink" onclick="openClose(\'' . $type . 'list-' . $id . '\');"';
-		$o .= (($type === 'like') ?
-					sprintf( t('<span  %1$s>%2$d people</span> like this.'), $spanatts, $cnt)
-					 :
-					sprintf( t('<span  %1$s>%2$d people</span> don\'t like this.'), $spanatts, $cnt) );
-		$o .= EOL ;
+		$spanatts = "class=\"fakelink\" onclick=\"openClose('{$type}list-$id');\"";
+		switch($type) {
+			case 'like':
+				$phrase = sprintf( t('<span  %1$s>%2$d people</span> like this'), $spanatts, $cnt);
+				break;
+			case 'dislike':
+				$phrase = sprintf( t('<span  %1$s>%2$d people</span> don\'t like this'), $spanatts, $cnt);
+				break;
+		}
+		$phrase .= EOL ;
+		$o .= replace_macros(get_markup_template('voting_fakelink.tpl'), array(
+			'$phrase' => $phrase,
+			'$type' => $type,
+			'$id' => $id
+		));
+
 		$total = count($arr);
 		if($total >= MAX_LIKERS)
 			$arr = array_slice($arr, 0, MAX_LIKERS - 1);
-		if($total < MAX_LIKERS)
-			$arr[count($arr)-1] = t('and') . ' ' . $arr[count($arr)-1];
-		$str = implode(', ', $arr);
-		if($total >= MAX_LIKERS)
+		if($total < MAX_LIKERS) {
+			$last = t('and') . ' ' . $arr[count($arr)-1];
+			$arr2 = array_slice($arr, 0, -1);
+			$str = implode(', ', $arr2) . ' ' . $last;
+		}
+		if($total >= MAX_LIKERS) {
+			$str = implode(', ', $arr);
 			$str .= sprintf( t(', and %d other people'), $total - MAX_LIKERS );
+		}
 		$str = (($type === 'like') ? sprintf( t('%s like this.'), $str) : sprintf( t('%s don\'t like this.'), $str));
-		$o .= "\t" . '<div id="' . $type . 'list-' . $id . '" style="display: none;" >' . $str . '</div>';
+		$o .= "\t" . '<div class="wall-item-' . $type . '-expanded" id="' . $type . 'list-' . $id . '" style="display: none;" >' . $str . '</div>';
 	}
 	return $o;
 }}
@@ -876,11 +978,14 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 
 	$o = '';
 
-	$geotag = (($x['allow_location']) ? get_markup_template('jot_geotag.tpl') : '');
+	$geotag = (($x['allow_location']) ? replace_macros(get_markup_template('jot_geotag.tpl'), array()) : '');
 
-	$plaintext = false;
-	if(local_user() && intval(get_pconfig(local_user(),'system','plaintext')))
-		$plaintext = true;
+/*	$plaintext = false;
+	if( local_user() && (intval(get_pconfig(local_user(),'system','plaintext')) || !feature_enabled(local_user(),'richtext')) )
+		$plaintext = true;*/
+	$plaintext = true;
+	if( local_user() && feature_enabled(local_user(),'richtext') )
+		$plaintext = false;
 
 	$tpl = get_markup_template('jot-header.tpl');
 	$a->page['htmlhead'] .= replace_macros($tpl, array(
@@ -895,7 +1000,8 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$audurl' => t("Please enter an audio link/URL:"),
 		'$term' => t('Tag term:'),
 		'$fileas' => t('Save to Folder:'),
-		'$whereareu' => t('Where are you right now?')
+		'$whereareu' => t('Where are you right now?'),
+		'$delitems' => t('Delete item(s)?')
 	));
 
 
@@ -915,8 +1021,6 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$whereareu' => t('Where are you right now?')
 	));
 
-
-	$tpl = get_markup_template("jot.tpl");
 
 	$jotplugins = '';
 	$jotnets = '';
@@ -948,10 +1052,31 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 	if($notes_cid)
 		$jotnets .= '<input type="hidden" name="contact_allow[]" value="' . $notes_cid .'" />';
 
-	$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));
+
+	// Private/public post links for the non-JS ACL form
+	$private_post = 1;
+	if($_REQUEST['public'])
+		$private_post = 0;
+
+	$query_str = $a->query_string;
+	if(strpos($query_str, 'public=1') !== false)
+		$query_str = str_replace(array('?public=1', '&public=1'), array('', ''), $query_str);
+
+	// I think $a->query_string may never have ? in it, but I could be wrong
+	// It looks like it's from the index.php?q=[etc] rewrite that the web
+	// server does, which converts any ? to &, e.g. suggest&ignore=61 for suggest?ignore=61
+	if(strpos($query_str, '?') === false)
+		$public_post_link = '?public=1';
+	else
+		$public_post_link = '&public=1';
+
+
+
+//	$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));
+	$tpl = get_markup_template("jot.tpl");
 
 	$o .= replace_macros($tpl,array(
-		'$return_path' => $a->query_string,
+		'$return_path' => $query_str,
 		'$action' =>  $a->get_baseurl(true) . '/item',
 		'$share' => (x($x,'button') ? $x['button'] : t('Share')),
 		'$upload' => t('Upload photo'),
@@ -971,7 +1096,7 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$title' => "",
 		'$placeholdertitle' => t('Set title'),
 		'$category' => "",
-		'$placeholdercategory' => t('Categories (comma-separated list)'),
+		'$placeholdercategory' => (feature_enabled(local_user(),'categories') ? t('Categories (comma-separated list)') : ''),
 		'$wait' => t('Please wait'),
 		'$permset' => t('Permission settings'),
 		'$shortpermset' => t('permissions'),
@@ -987,12 +1112,22 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$jotnets' => $jotnets,
 		'$emtitle' => t('Example: bob@example.com, mary@example.com'),
 		'$lockstate' => $x['lockstate'],
-		'$acl' => $x['acl'],
 		'$bang' => $x['bang'],
 		'$profile_uid' => $x['profile_uid'],
-		'$preview' => t('Preview'),
+		'$preview' => ((feature_enabled($x['profile_uid'],'preview')) ? t('Preview') : ''),
+		'$jotplugins' => $jotplugins,
 		'$sourceapp' => t($a->sourcename),
-		'$cancel' => t('Cancel')
+		'$cancel' => t('Cancel'),
+		'$rand_num' => random_digits(12),
+
+		// ACL permissions box
+		'$acl' => $x['acl'],
+		'$acl_data' => $x['acl_data'],
+		'$group_perms' => t('Post to Groups'),
+		'$contact_perms' => t('Post to Contacts'),
+		'$private' => t('Private post'),
+		'$is_private' => $private_post,
+		'$public_link' => $public_post_link,
 	));
 
 
@@ -1007,9 +1142,10 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 
 function get_item_children($arr, $parent) {
 	$children = array();
+	$a = get_app();
 	foreach($arr as $item) {
 		if($item['id'] != $item['parent']) {
-			if(get_config('system','thread_allow')) {
+			if(get_config('system','thread_allow') && $a->theme_thread_allow) {
 				// Fallback to parent-uri if thr-parent is not set
 				$thr_parent = $item['thr-parent'];
 				if($thr_parent == '')

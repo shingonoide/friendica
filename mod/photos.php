@@ -5,7 +5,7 @@ require_once('include/acl_selectors.php');
 require_once('include/bbcode.php');
 require_once('include/security.php');
 require_once('include/redir.php');
-
+require_once('include/tags.php');
 
 function photos_init(&$a) {
 
@@ -166,6 +166,11 @@ function photos_post(&$a) {
 			return; // NOTREACHED
 		}
 
+		// Check if the user has responded to a delete confirmation query
+		if($_REQUEST['canceled']) {
+			goaway($a->get_baseurl() . '/' . $_SESSION['photo_return']);
+		}
+
 		$newalbum = notags(trim($_POST['albumname']));
 		if($newalbum != $album) {
 			q("UPDATE `photo` SET `album` = '%s' WHERE `album` = '%s' AND `uid` = %d",
@@ -180,6 +185,25 @@ function photos_post(&$a) {
 
 
 		if($_POST['dropalbum'] == t('Delete Album')) {
+
+			// Check if we should do HTML-based delete confirmation
+			if($_REQUEST['confirm']) {
+				$drop_url = $a->query_string;
+				$extra_inputs = array(
+					array('name' => 'albumname', 'value' => $_POST['albumname']),
+				);
+				$a->page['content'] = replace_macros(get_markup_template('confirm.tpl'), array(
+					'$method' => 'post',
+					'$message' => t('Do you really want to delete this photo album and all its photos?'),
+					'$extra_inputs' => $extra_inputs,
+					'$confirm' => t('Delete Album'),
+					'$confirm_url' => $drop_url,
+					'$confirm_name' => 'dropalbum', // Needed so that confirmation will bring us back into this if statement
+					'$cancel' => t('Cancel'),
+				));
+				$a->error = 1; // Set $a->error so the other module functions don't execute
+				return;
+			}
 
 			$res = array();
 
@@ -228,6 +252,7 @@ function photos_post(&$a) {
 						dbesc($rr['parent-uri']),
 						intval($page_owner_uid)
 					);
+					create_tags_from_itemuri($rr['parent-uri'], $page_owner_uid);
 
 					$drop_id = intval($rr['id']);
 
@@ -242,9 +267,31 @@ function photos_post(&$a) {
 		return; // NOTREACHED
 	}
 
+
+	// Check if the user has responded to a delete confirmation query for a single photo
+	if(($a->argc > 2) && $_REQUEST['canceled']) {
+		goaway($a->get_baseurl() . '/' . $_SESSION['photo_return']);
+	}
+
 	if(($a->argc > 2) && (x($_POST,'delete')) && ($_POST['delete'] == t('Delete Photo'))) {
 
 		// same as above but remove single photo
+
+		// Check if we should do HTML-based delete confirmation
+		if($_REQUEST['confirm']) {
+			$drop_url = $a->query_string;
+			$a->page['content'] = replace_macros(get_markup_template('confirm.tpl'), array(
+				'$method' => 'post',
+				'$message' => t('Do you really want to delete this photo?'),
+				'$extra_inputs' => array(),
+				'$confirm' => t('Delete Photo'),
+				'$confirm_url' => $drop_url,
+				'$confirm_name' => 'delete', // Needed so that confirmation will bring us back into this if statement
+				'$cancel' => t('Cancel'),
+			));
+			$a->error = 1; // Set $a->error so the other module functions don't execute
+			return;
+		}
 
 		if($visitor) {
 			$r = q("SELECT `id`, `resource-id` FROM `photo` WHERE `contact-id` = %d AND `uid` = %d AND `resource-id` = '%s' LIMIT 1",
@@ -275,6 +322,7 @@ function photos_post(&$a) {
 					dbesc($i[0]['uri']),
 					intval($page_owner_uid)
 				);
+				create_tags_from_itemuri($i[0]['uri'], $page_owner_uid);
 
 				$url = $a->get_baseurl();
 				$drop_id = intval($i[0]['id']);
@@ -284,7 +332,7 @@ function photos_post(&$a) {
 			}
 		}
 
-		goaway($a->get_baseurl() . '/' . $_SESSION['photo_return']);
+		goaway($a->get_baseurl() . '/photos/' . $a->data['user']['nickname']);
 		return; // NOTREACHED
 	}
 
@@ -335,7 +383,7 @@ function photos_post(&$a) {
 						$ph->scaleImage(640);
 						$width  = $ph->getWidth();
 						$height = $ph->getHeight();
-		
+
 						$x = q("update photo set data = '%s', height = %d, width = %d where `resource-id` = '%s' and uid = %d and scale = 1 limit 1",
 							dbesc($ph->imageString()),
 							intval($height),
@@ -357,7 +405,7 @@ function photos_post(&$a) {
 							dbesc($resource_id),
 							intval($page_owner_uid)
 						);
-					}	
+					}
 				}
 			}
 		}
@@ -559,6 +607,7 @@ function photos_post(&$a) {
 				intval($item_id),
 				intval($page_owner_uid)
 			);
+			create_tags_from_item($item_id);
 
 			$best = 0;
 			foreach($p as $scales) {
@@ -834,8 +883,8 @@ function photos_post(&$a) {
 			intval($item_id)
 		);
 	}
-	
-	if($visible) 
+
+	if($visible)
 		proc_run('php', "include/notifier.php", 'wall-new', $item_id);
 
 	call_hooks('photo_post_end',intval($item_id));
@@ -1024,8 +1073,10 @@ function photos_content(&$a) {
 
 		call_hooks('photo_upload_form',$ret);
 
-		$default_upload = '<input id="photos-upload-choose" type="file" name="userfile" /> 	<div class="photos-upload-submit-wrapper" >
-		<input type="submit" name="submit" value="' . t('Submit') . '" id="photos-upload-submit" /> </div>';
+		$default_upload_box = replace_macros(get_markup_template('photos_default_uploader_box.tpl'), array());
+		$default_upload_submit = replace_macros(get_markup_template('photos_default_uploader_submit.tpl'), array(
+			'$submit' => t('Submit'),
+		));
 
 		$usage_message = '';
 		$limit = service_class_fetch($a->data['user']['uid'],'photo_upload_limit');
@@ -1038,7 +1089,36 @@ function photos_content(&$a) {
 		}
 
 
+		// Private/public post links for the non-JS ACL form
+		$private_post = 1;
+		if($_REQUEST['public'])
+			$private_post = 0;
+
+		$query_str = $a->query_string;
+		if(strpos($query_str, 'public=1') !== false)
+			$query_str = str_replace(array('?public=1', '&public=1'), array('', ''), $query_str);
+
+		// I think $a->query_string may never have ? in it, but I could be wrong
+		// It looks like it's from the index.php?q=[etc] rewrite that the web
+		// server does, which converts any ? to &, e.g. suggest&ignore=61 for suggest?ignore=61
+		if(strpos($query_str, '?') === false)
+			$public_post_link = '?public=1';
+		else
+			$public_post_link = '&public=1';
+
+
+
 		$tpl = get_markup_template('photos_upload.tpl');
+
+		if($a->theme['template_engine'] === 'internal') {
+			$albumselect_e = template_escape($albumselect);
+			$aclselect_e = (($visitor) ? '' : template_escape(populate_acl($a->user, $celeb)));
+		}
+		else {
+			$albumselect_e = $albumselect;
+			$aclselect_e = (($visitor) ? '' : populate_acl($a->user, $celeb));
+		}
+
 		$o .= replace_macros($tpl,array(
 			'$pagename' => t('Upload Photos'),
 			'$sessid' => session_id(),
@@ -1047,12 +1127,23 @@ function photos_content(&$a) {
 			'$newalbum' => t('New album name: '),
 			'$existalbumtext' => t('or existing album name: '),
 			'$nosharetext' => t('Do not show a status post for this upload'),
-			'$albumselect' => template_escape($albumselect),
+			'$albumselect' => $albumselect_e,
 			'$permissions' => t('Permissions'),
-			'$aclselect' => (($visitor) ? '' : template_escape(populate_acl($a->user, $celeb))),
-			'$uploader' => $ret['addon_text'],
-			'$default' => (($ret['default_upload']) ? $default_upload : ''),
-			'$uploadurl' => $ret['post_url']
+			'$aclselect' => $aclselect_e,
+			'$alt_uploader' => $ret['addon_text'],
+			'$default_upload_box' => (($ret['default_upload']) ? $default_upload_box : ''),
+			'$default_upload_submit' => (($ret['default_upload']) ? $default_upload_submit : ''),
+			'$uploadurl' => $ret['post_url'],
+
+			// ACL permissions box
+			'$acl_data' => construct_acl_data($a, $a->user), // For non-Javascript ACL selector
+			'$group_perms' => t('Show to Groups'),
+			'$contact_perms' => t('Show to Contacts'),
+			'$private' => t('Private Photo'),
+			'$public' => t('Public Photo'),
+			'$is_private' => $private_post,
+			'$return_path' => $query_str,
+			'$public_link' => $public_post_link,
 
 		));
 
@@ -1092,10 +1183,18 @@ function photos_content(&$a) {
 			if(($album !== t('Profile Photos')) && ($album !== 'Contact Photos') && ($album !== t('Contact Photos'))) {
 				if($can_post) {
 					$edit_tpl = get_markup_template('album_edit.tpl');
+
+					if($a->theme['template_engine'] === 'internal') {
+						$album_e = template_escape($album);
+					}
+					else {
+						$album_e = $album;
+					}
+
 					$o .= replace_macros($edit_tpl,array(
 						'$nametext' => t('New album name: '),
 						'$nickname' => $a->data['user']['nickname'],
-						'$album' => template_escape($album),
+						'$album' => $album_e,
 						'$hexalbum' => bin2hex($album),
 						'$submit' => t('Submit'),
 						'$dropsubmit' => t('Delete Album')
@@ -1135,6 +1234,15 @@ function photos_content(&$a) {
 				
 				$ext = $phototypes[$rr['type']];
 
+				if($a->theme['template_engine'] === 'internal') {
+					$imgalt_e = template_escape($rr['filename']);
+					$desc_e = template_escape($rr['desc']);
+				}
+				else {
+					$imgalt_e = $rr['filename'];
+					$desc_e = $rr['desc'];
+				}
+
 				$o .= replace_macros($tpl,array(
 					'$id' => $rr['id'],
 					'$twist' => ' ' . $twist . rand(2,4),
@@ -1142,8 +1250,8 @@ function photos_content(&$a) {
 						. (($_GET['order'] === 'posted') ? '?f=&order=posted' : ''),
 					'$phototitle' => t('View Photo'),
 					'$imgsrc' => $a->get_baseurl() . '/photo/' . $rr['resource-id'] . '-' . $rr['scale'] . '.' .$ext,
-					'$imgalt' => template_escape($rr['filename']),
-					'$desc'=> template_escape($rr['desc'])
+					'$imgalt' => $imgalt_e,
+					'$desc'=> $desc_e
 				));
 
 		}
@@ -1313,7 +1421,7 @@ function photos_content(&$a) {
 				intval($a->pager['itemspage'])
 
 			);
-		
+
 			if((local_user()) && (local_user() == $link_item['uid'])) {
 				q("UPDATE `item` SET `unseen` = 0 WHERE `parent` = %d and `uid` = %d",
 					intval($link_item['parent']),
@@ -1344,24 +1452,64 @@ function photos_content(&$a) {
 		$edit = Null;
 		if(($cmd === 'edit') && ($can_post)) {
 			$edit_tpl = get_markup_template('photo_edit.tpl');
+
+			// Private/public post links for the non-JS ACL form
+			$private_post = 1;
+			if($_REQUEST['public'])
+				$private_post = 0;
+
+			$query_str = $a->query_string;
+			if(strpos($query_str, 'public=1') !== false)
+				$query_str = str_replace(array('?public=1', '&public=1'), array('', ''), $query_str);
+
+			// I think $a->query_string may never have ? in it, but I could be wrong
+			// It looks like it's from the index.php?q=[etc] rewrite that the web
+			// server does, which converts any ? to &, e.g. suggest&ignore=61 for suggest?ignore=61
+			if(strpos($query_str, '?') === false)
+				$public_post_link = '?public=1';
+			else
+				$public_post_link = '&public=1';
+
+
+			if($a->theme['template_engine'] === 'internal') {
+				$album_e = template_escape($ph[0]['album']);
+				$caption_e = template_escape($ph[0]['desc']);
+				$aclselect_e = template_escape(populate_acl($ph[0]));
+			}
+			else {
+				$album_e = $ph[0]['album'];
+				$caption_e = $ph[0]['desc'];
+				$aclselect_e = populate_acl($ph[0]);
+			}
+
 			$edit = replace_macros($edit_tpl, array(
 				'$id' => $ph[0]['id'],
 				'$rotatecw' => t('Rotate CW (right)'),
 				'$rotateccw' => t('Rotate CCW (left)'),
-				'$album' => template_escape($ph[0]['album']),
+				'$album' => $album_e,
 				'$newalbum' => t('New album name'), 
 				'$nickname' => $a->data['user']['nickname'],
 				'$resource_id' => $ph[0]['resource-id'],
 				'$capt_label' => t('Caption'),
-				'$caption' => template_escape($ph[0]['desc']),
+				'$caption' => $caption_e,
 				'$tag_label' => t('Add a Tag'),
 				'$tags' => $link_item['tag'],
 				'$permissions' => t('Permissions'),
-				'$aclselect' => template_escape(populate_acl($ph[0])),
+				'$aclselect' => $aclselect_e,
 				'$help_tags' => t('Example: @bob, @Barbara_Jensen, @jim@example.com, #California, #camping'),
 				'$item_id' => ((count($linked_items)) ? $link_item['id'] : 0),
 				'$submit' => t('Submit'),
-				'$delete' => t('Delete Photo')
+				'$delete' => t('Delete Photo'),
+
+				// ACL permissions box
+				'$acl_data' => construct_acl_data($a, $ph[0]), // For non-Javascript ACL selector
+				'$group_perms' => t('Show to Groups'),
+				'$contact_perms' => t('Show to Contacts'),
+				'$private' => t('Private photo'),
+				'$public' => t('Public photo'),
+				'$is_private' => $private_post,
+				'$return_path' => $query_str,
+				'$public_link' => $public_post_link,
 			));
 		}
 
@@ -1379,9 +1527,10 @@ function photos_content(&$a) {
 				$likebuttons = replace_macros($like_tpl,array(
 					'$id' => $link_item['id'],
 					'$likethis' => t("I like this \x28toggle\x29"),
-					'$nolike' => t("I don't like this \x28toggle\x29"),
+					'$nolike' => (feature_enabled(local_user(), 'dislike') ? t("I don't like this \x28toggle\x29") : ''),
 					'$share' => t('Share'),
-					'$wait' => t('Please wait')
+					'$wait' => t('Please wait'),
+					'$return_path' => $a->query_string,
 				));
 			}
 
@@ -1488,14 +1637,25 @@ function photos_content(&$a) {
 						$drop = replace_macros(get_markup_template('photo_drop.tpl'), array('$id' => $item['id'], '$delete' => t('Delete')));
 
 
+					if($a->theme['template_engine'] === 'internal') {
+						$name_e = template_escape($profile_name);
+						$title_e = template_escape($item['title']);
+						$body_e = template_escape(bbcode($item['body']));
+					}
+					else {
+						$name_e = $profile_name;
+						$title_e = $item['title'];
+						$body_e = bbcode($item['body']);
+					}
+
 					$comments .= replace_macros($template,array(
 						'$id' => $item['item_id'],
 						'$profile_url' => $profile_link,
-						'$name' => template_escape($profile_name),
+						'$name' => $name_e,
 						'$thumb' => $profile_avatar,
 						'$sparkle' => $sparkle,
-						'$title' => template_escape($item['title']),
-						'$body' => template_escape(bbcode($item['body'])),
+						'$title' => $title_e,
+						'$body' => $body_e,
 						'$ago' => relative_date($item['created']),
 						'$indent' => (($item['parent'] != $item['item_id']) ? ' comment' : ''),
 						'$drop' => $drop,
@@ -1531,20 +1691,34 @@ function photos_content(&$a) {
 		}
 		
 		$photo_tpl = get_markup_template('photo_view.tpl');
+
+		if($a->theme['template_engine'] === 'internal') {
+			$album_e = array($album_link,template_escape($ph[0]['album']));
+			$tags_e = template_escape($tags);
+			$like_e = template_escape($like);
+			$dislike_e = template_escape($dislike);
+		}
+		else {
+			$album_e = array($album_link,$ph[0]['album']);
+			$tags_e = $tags;
+			$like_e = $like;
+			$dislike_e = $dislike;
+		}
+
 		$o .= replace_macros($photo_tpl, array(
 			'$id' => $ph[0]['id'],
-			'$album' => array($album_link,template_escape($ph[0]['album'])),
+			'$album' => $album_e,
 			'$tools' => $tools,
 			'$lock' => $lock,
 			'$photo' => $photo,
 			'$prevlink' => $prevlink,
 			'$nextlink' => $nextlink,
 			'$desc' => $ph[0]['desc'],
-			'$tags' => template_escape($tags),
+			'$tags' => $tags_e,
 			'$edit' => $edit,	
 			'$likebuttons' => $likebuttons,
-			'$like' => template_escape($like),
-			'$dislike' => template_escape($dislike),
+			'$like' => $like_e,
+			'$dislike' => $dikslike_e,
 			'$comments' => $comments,
 			'$paginate' => $paginate,
 		));
@@ -1588,16 +1762,25 @@ function photos_content(&$a) {
 				$twist = 'rotright';
 			$ext = $phototypes[$rr['type']];
 			
+			if($a->theme['template_engine'] === 'internal') {
+				$alt_e = template_escape($rr['filename']);
+				$name_e = template_escape($rr['album']);
+			}
+			else {
+				$alt_e = $rr['filename'];
+				$name_e = $rr['album'];
+			}
+
 			$photos[] = array(
 				'id'       => $rr['id'],
 				'twist'    => ' ' . $twist . rand(2,4),
 				'link'  	=> $a->get_baseurl() . '/photos/' . $a->data['user']['nickname'] . '/image/' . $rr['resource-id'],
 				'title' 	=> t('View Photo'),
 				'src'     	=> $a->get_baseurl() . '/photo/' . $rr['resource-id'] . '-' . ((($rr['scale']) == 6) ? 4 : $rr['scale']) . '.' . $ext,
-				'alt'     	=> template_escape($rr['filename']),
+				'alt'     	=> $alt_e,
 				'album'	=> array(
 					'link'  => $a->get_baseurl() . '/photos/' . $a->data['user']['nickname'] . '/album/' . bin2hex($rr['album']),
-					'name'  => template_escape($rr['album']),
+					'name'  => $name_e,
 					'alt'   => t('View Album'),
 				),
 				
@@ -1606,7 +1789,7 @@ function photos_content(&$a) {
 	}
 	
 	$tpl = get_markup_template('photos_recent.tpl'); 
-	$o .= replace_macros($tpl,array(
+	$o .= replace_macros($tpl, array(
 		'$title' => t('Recent Photos'),
 		'$can_post' => $can_post,
 		'$upload' => array(t('Upload New Photos'), $a->get_baseurl().'/photos/'.$a->data['user']['nickname'].'/upload'),

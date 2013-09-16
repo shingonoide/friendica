@@ -10,6 +10,7 @@ favicon.*
 home.html
 addon
 *~
+robots.txt
 
 #ignore documentation, it should be newly built 
 doc/api
@@ -26,3 +27,11 @@ report/
 .DS_Store
 
 /nbproject/private/
+
+#ignore smarty cache
+/view/smarty3/compiled/
+
+#ignore cache folders
+/privacy_image_cache/
+/photo/
+nbproject

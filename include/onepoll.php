@@ -2,6 +2,13 @@
 
 require_once("boot.php");
 
+function RemoveReply($subject) {
+	while (in_array(strtolower(substr($subject, 0, 3)), array("re:", "aw:")))
+		$subject = trim(substr($subject, 4));
+
+	return($subject);
+}
+
 function onepoll_run(&$argv, &$argc){
 	global $a, $db;
 
@@ -11,7 +18,7 @@ function onepoll_run(&$argv, &$argc){
   
 	if(is_null($db)) {
 	    @include(".htconfig.php");
-    	require_once("dba.php");
+    	require_once("include/dba.php");
 	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
     	unset($db_host, $db_user, $db_pass, $db_data);
   	};
@@ -35,7 +42,7 @@ function onepoll_run(&$argv, &$argc){
 	load_hooks();
 
 	logger('onepoll: start');
-	
+
 	$manual_id  = 0;
 	$generation = 0;
 	$hub_update = false;
@@ -49,7 +56,17 @@ function onepoll_run(&$argv, &$argc){
 		logger('onepoll: no contact');
 		return;
 	}
-	
+
+	// Test
+	$lockpath = get_config('system','lockpath');
+	if ($lockpath != '') {
+		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id.'.lck');
+		if($pidfile->is_already_running()) {
+			logger("onepoll: Already running for contact ".$contact_id);
+			exit;
+		}
+	}
+
 
 	$d = datetime_convert();
 
@@ -59,7 +76,7 @@ function onepoll_run(&$argv, &$argc){
 
 	$contacts = q("SELECT `contact`.* FROM `contact` 
 		WHERE ( `rel` = %d OR `rel` = %d ) AND `poll` != ''
-		AND NOT `network` IN ( '%s', '%s' )
+		AND NOT `network` IN ( '%s', '%s', '%s' )
 		AND `contact`.`id` = %d
 		AND `self` = 0 AND `contact`.`blocked` = 0 AND `contact`.`readonly` = 0 
 		AND `contact`.`archive` = 0 LIMIT 1",
@@ -67,6 +84,7 @@ function onepoll_run(&$argv, &$argc){
 		intval(CONTACT_IS_FRIEND),
 		dbesc(NETWORK_DIASPORA),
 		dbesc(NETWORK_FACEBOOK),
+		dbesc(NETWORK_PUMPIO),
 		intval($contact_id)
 	);
 
@@ -245,6 +263,9 @@ function onepoll_run(&$argv, &$argc){
 
 		$stat_writeable = ((($contact['notify']) && ($contact['rel'] == CONTACT_IS_FOLLOWER || $contact['rel'] == CONTACT_IS_FRIEND)) ? 1 : 0);
 
+		if($contact['network'] === NETWORK_OSTATUS && get_pconfig($importer_uid,'system','ostatus_autofriend'))
+			$stat_writeable = 1;
+
 		if($stat_writeable != $contact['writable']) {
 			q("UPDATE `contact` SET `writable` = %d WHERE `id` = %d LIMIT 1",
 				intval($stat_writeable),
@@ -321,14 +342,18 @@ function onepoll_run(&$argv, &$argc){
 						);
 
 						if(count($r)) {
-							logger("Mail: Seen before ".$msg_uid." for ".$mailconf[0]['user'],LOGGER_DEBUG);
-							if($meta->deleted && ! $r[0]['deleted']) {
-								q("UPDATE `item` SET `deleted` = 1, `changed` = '%s' WHERE `id` = %d LIMIT 1",
-									dbesc(datetime_convert()),
-									intval($r[0]['id'])
-								);
-							}
-							/*switch ($mailconf[0]['action']) {
+							logger("Mail: Seen before ".$msg_uid." for ".$mailconf[0]['user']." UID: ".$importer_uid." URI: ".$datarray['uri'],LOGGER_DEBUG);
+
+							// Only delete when mails aren't automatically moved or deleted
+							if (($mailconf[0]['action'] != 1) AND ($mailconf[0]['action'] != 3))
+								if($meta->deleted && ! $r[0]['deleted']) {
+									q("UPDATE `item` SET `deleted` = 1, `changed` = '%s' WHERE `id` = %d LIMIT 1",
+										dbesc(datetime_convert()),
+										intval($r[0]['id'])
+									);
+								}
+
+							switch ($mailconf[0]['action']) {
 								case 0:
 									logger("Mail: Seen before ".$msg_uid." for ".$mailconf[0]['user'].". Doing nothing.", LOGGER_DEBUG);
 									break;
@@ -346,7 +371,7 @@ function onepoll_run(&$argv, &$argc){
 									if ($mailconf[0]['movetofolder'] != "")
 										imap_mail_move($mbox, $msg_uid, $mailconf[0]['movetofolder'], FT_UID);
 									break;
-							}*/
+							}
 							continue;
 						}
 
@@ -374,10 +399,6 @@ function onepoll_run(&$argv, &$argc){
 	//							$datarray['parent-uri'] = $r[0]['uri'];
 						}
 
-
-						if(! x($datarray,'parent-uri'))
-							$datarray['parent-uri'] = $datarray['uri'];
-
 						// Decoding the header
 						$subject = imap_mime_header_decode($meta->subject);
 						$datarray['title'] = "";
@@ -392,10 +413,27 @@ function onepoll_run(&$argv, &$argc){
 						//$datarray['title'] = notags(trim($meta->subject));
 						$datarray['created'] = datetime_convert('UTC','UTC',$meta->date);
 
-						// Is it  reply?
+						// Is it a reply?
 						$reply = ((substr(strtolower($datarray['title']), 0, 3) == "re:") or
 							(substr(strtolower($datarray['title']), 0, 3) == "re-") or
-							(raw_refs != ""));
+							($raw_refs != ""));
+
+						// Remove Reply-signs in the subject
+						$datarray['title'] = RemoveReply($datarray['title']);
+
+						// If it seems to be a reply but a header couldn't be found take the last message with matching subject
+						if(!x($datarray,'parent-uri') and $reply) {
+							//$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE MATCH (`title`) AGAINST ('".'"%s"'."' IN BOOLEAN MODE) AND `uid` = %d ORDER BY `created` DESC LIMIT 1",
+							$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE `title` = \"%s\" AND `uid` = %d ORDER BY `created` DESC LIMIT 1",
+								dbesc(protect_sprintf($datarray['title'])),
+								intval($importer_uid));
+							if(count($r))
+								$datarray['parent-uri'] = $r[0]['parent-uri'];
+						}
+
+						if(! x($datarray,'parent-uri'))
+							$datarray['parent-uri'] = $datarray['uri'];
+
 
 						$r = email_get_msg($mbox,$msg_uid, $reply);
 						if(! $r) {
@@ -403,6 +441,7 @@ function onepoll_run(&$argv, &$argc){
 							continue;
 						}
 						$datarray['body'] = escape_tags($r['body']);
+						$datarray['body'] = limit_body_size($datarray['body']);
 
 						logger("Mail: Importing ".$msg_uid." for ".$mailconf[0]['user']);
 
@@ -418,7 +457,29 @@ function onepoll_run(&$argv, &$argc){
 								else
 									$fromdecoded .= $frompart->text;
 
-							$datarray['body'] = "[b]".t('From: ') . escape_tags($fromdecoded) . "[/b]\n\n" . $datarray['body'];
+							$fromarr = imap_rfc822_parse_adrlist($fromdecoded, $a->get_hostname());
+
+							$frommail = $fromarr[0]->mailbox."@".$fromarr[0]->host;
+
+							if (isset($fromarr[0]->personal))
+								$fromname = $fromarr[0]->personal;
+							else
+								$fromname = $frommail;
+
+							//$datarray['body'] = "[b]".t('From: ') . escape_tags($fromdecoded) . "[/b]\n\n" . $datarray['body'];
+
+							$datarray['author-name'] = $fromname;
+							$datarray['author-link'] = "mailto:".$frommail;
+							$datarray['author-avatar'] = $contact['photo'];
+
+							$datarray['owner-name'] = $contact['name'];
+							$datarray['owner-link'] = "mailto:".$contact['addr'];
+							$datarray['owner-avatar'] = $contact['photo'];
+
+						} else {
+							$datarray['author-name'] = $contact['name'];
+							$datarray['author-link'] = 'mailbox';
+							$datarray['author-avatar'] = $contact['photo'];
 						}
 
 						$datarray['uid'] = $importer_uid;
@@ -429,9 +490,6 @@ function onepoll_run(&$argv, &$argc){
 							$datarray['private'] = 1;
 							$datarray['allow_cid'] = '<' . $contact['id'] . '>';
 						}
-						$datarray['author-name'] = $contact['name'];
-						$datarray['author-link'] = 'mailbox';
-						$datarray['author-avatar'] = $contact['photo'];
 
 						$stored_item = item_store($datarray);
 						q("UPDATE `item` SET `last-child` = 0 WHERE `parent-uri` = '%s' AND `uid` = %d",
@@ -469,6 +527,9 @@ function onepoll_run(&$argv, &$argc){
 	elseif($contact['network'] === NETWORK_FACEBOOK) {
 		// This is picked up by the Facebook plugin on a cron hook.
 		// Ignored here.
+	} elseif($contact['network'] === NETWORK_PUMPIO) {
+		// This is picked up by the pump.io plugin on a cron hook.
+		// Ignored here.
 	}
 
 	if($xml) {
@@ -487,17 +548,17 @@ function onepoll_run(&$argv, &$argc){
 
 
 		// do it twice. Ensures that children of parents which may be later in the stream aren't tossed
-	
+
 		consume_feed($xml,$importer,$contact,$hub,1,2);
 
 		$hubmode = 'subscribe';
 		if($contact['network'] === NETWORK_DFRN || $contact['blocked'] || $contact['readonly'])
 			$hubmode = 'unsubscribe';
 
-		if($contact['network'] === NETWORK_OSTATUS && (! $contact['hub-verify']))
+		if(($contact['network'] === NETWORK_OSTATUS ||  $contact['network'] == NETWORK_FEED) && (! $contact['hub-verify']))
 			$hub_update = true;
 
-		if((strlen($hub)) && ($hub_update) && ($contact['rel'] != CONTACT_IS_FOLLOWER)) {
+		if((strlen($hub)) && ($hub_update) && (($contact['rel'] != CONTACT_IS_FOLLOWER) || $contact['network'] == NETWORK_FEED) ) {
 			logger('poller: hub ' . $hubmode . ' : ' . $hub . ' contact name : ' . $contact['name'] . ' local user : ' . $importer['name']);
 			$hubs = explode(',', $hub);
 			if(count($hubs)) {

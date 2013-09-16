@@ -1,5 +1,5 @@
 <?php
-require_once "html2bbcode.php";
+require_once("include/html2bbcode.php");
 
 function breaklines($line, $level, $wraplength = 75)
 {
@@ -107,6 +107,12 @@ function html2plain($html, $wraplength = 75, $compact = false)
 
 	$message = str_replace("\r", "", $html);
 
+	// replace all hashtag addresses
+	if (get_config("system", "remove_hashtags_on_export")) {
+		$pattern = '/#<a.*?href="(.*?)".*?>(.*?)<\/a>/is';
+		$message = preg_replace($pattern, '#$2', $message);
+	}
+
 	$doc = new DOMDocument();
 	$doc->preserveWhiteSpace = false;
 
@@ -209,10 +215,13 @@ function html2plain($html, $wraplength = 75, $compact = false)
 	if (!$compact) {
 		$counter = 1;
 		foreach ($urls as $id=>$url)
-			if (strpos($message, $url) == false)
+			if (strpos($message, $url) === false)
 				$message .= "\n".$url." ";
 				//$message .= "\n[".($counter++)."] ".$url;
 	}
+
+	$message = str_replace("\n«", "«\n", $message);
+	$message = str_replace("»\n", "\n»", $message);
 
 	do {
 		$oldmessage = $message;
@@ -223,4 +232,4 @@ function html2plain($html, $wraplength = 75, $compact = false)
 
 	return(trim($message));
 }
-?>
+

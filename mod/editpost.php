@@ -1,6 +1,6 @@
 <?php
 
-require_once('acl_selectors.php');
+require_once('include/acl_selectors.php');
 
 function editpost_content(&$a) {
 
@@ -85,16 +85,19 @@ function editpost_content(&$a) {
 		}
 	}
 
-	if($mail_enabled) {
+	// I don't think there's any need for the $jotnets when editing the post,
+	// and including them makes it difficult for the JS-free theme, so let's
+	// disable them
+/*	if($mail_enabled) {
        $selected = (($pubmail_enabled) ? ' checked="checked" ' : '');
 		$jotnets .= '<div class="profile-jot-net"><input type="checkbox" name="pubmail_enable"' . $selected . ' value="1" /> '
           	. t("Post to Email") . '</div>';
-	}
+	}*/
 					
 
 
 	call_hooks('jot_tool', $jotplugins);
-	call_hooks('jot_networks', $jotnets);
+	//call_hooks('jot_networks', $jotnets);
 
 	
 	//$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));	
@@ -130,7 +133,7 @@ function editpost_content(&$a) {
 		'$emailcc' => t('CC: email addresses'),
 		'$public' => t('Public post'),
 		'$jotnets' => $jotnets,
-		'$title' => $itm[0]['title'],
+		'$title' => htmlspecialchars($itm[0]['title']),
 		'$placeholdertitle' => t('Set title'),
 		'$category' => file_tag_file_to_list($itm[0]['file'], 'category'),
 		'$placeholdercategory' => (feature_enabled(local_user(),'categories') ? t('Categories (comma-separated list)') : ''),

@@ -1,9 +1,9 @@
 <?php
-	require_once("bbcode.php");
-	require_once("datetime.php");
-	require_once("conversation.php");
-	require_once("oauth.php");
-	require_once("html2plain.php");
+	require_once("include/bbcode.php");
+	require_once("include/datetime.php");
+	require_once("include/conversation.php");
+	require_once("include/oauth.php");
+	require_once("include/html2plain.php");
 	/*
 	 * Twitter-Like API
 	 *
@@ -450,6 +450,11 @@
 			case "xml":
 				$data = array_xmlify($data);
 				$tpl = get_markup_template("api_".$templatename."_".$type.".tpl");
+				if(! $tpl) {
+					header ("Content-Type: text/xml");
+					echo '<?xml version="1.0" encoding="UTF-8"?>'."\n".'<status><error>not implemented</error></status>';
+					killme();
+				}
 				$ret = replace_macros($tpl, $data);
 				break;
 			case "json":
@@ -516,13 +521,13 @@
                         $txt = $purifier->purify($txt);
 		}
 		$txt = html2bbcode($txt);
-		
+
                 $a->argv[1]=$user_info['screen_name']; //should be set to username?
-		
+
 		$_REQUEST['hush']='yeah'; //tell wall_upload function to return img info instead of echo
                 require_once('mod/wall_upload.php');
 		$bebop = wall_upload_post($a);
-                
+
 		//now that we have the img url in bbcode we can add it to the status and insert the wall item.
                 $_REQUEST['body']=$txt."\n\n".$bebop;
                 require_once('mod/item.php');
@@ -629,7 +634,7 @@
 
 		if (count($lastwall)>0){
 			$lastwall = $lastwall[0];
-			
+
 			$in_reply_to_status_id = '';
 			$in_reply_to_user_id = '';
 			$in_reply_to_screen_name = '';
@@ -637,14 +642,14 @@
 				$in_reply_to_status_id=$lastwall['parent'];
 				$in_reply_to_user_id = $lastwall['reply_uid'];
 				$in_reply_to_screen_name = $lastwall['reply_author'];
-			}  
+			}
 			$status_info = array(
-				'text' => html2plain(bbcode($lastwall['body']), 0),
+				'text' => html2plain(bbcode($lastwall['body'], false, false, true), 0),
 				'truncated' => false,
 				'created_at' => api_date($lastwall['created']),
 				'in_reply_to_status_id' => $in_reply_to_status_id,
 				'source' => (($lastwall['app']) ? $lastwall['app'] : 'web'),
-				'id' => $lastwall['contact-id'],
+				'id' => $lastwall['id'],
 				'in_reply_to_user_id' => $in_reply_to_user_id,
 				'in_reply_to_screen_name' => $in_reply_to_screen_name,
 				'geo' => '',
@@ -694,11 +699,11 @@
 				$in_reply_to_status_id=$lastwall['parent'];
 				$in_reply_to_user_id = $lastwall['reply_uid'];
 				$in_reply_to_screen_name = $lastwall['reply_author'];
-			}  
+			}
 			$user_info['status'] = array(
 				'created_at' => api_date($lastwall['created']),
 				'id' => $lastwall['contact-id'],
-				'text' => html2plain(bbcode($lastwall['body']), 0),
+				'text' => html2plain(bbcode($lastwall['body'], false, false, true), 0),
 				'source' => (($lastwall['app']) ? $lastwall['app'] : 'web'),
 				'truncated' => false,
 				'in_reply_to_status_id' => $in_reply_to_status_id,
@@ -736,8 +741,9 @@
 		if ($page<0) $page=0;
 		$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
 		$max_id = (x($_REQUEST,'max_id')?$_REQUEST['max_id']:0);
-		$exclude_replies = (x($_REQUEST,'exclude_replies')?1:0);
 		//$since_id = 0;//$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
+		$exclude_replies = (x($_REQUEST,'exclude_replies')?1:0);
+		$conversation_id = (x($_REQUEST,'conversation_id')?$_REQUEST['conversation_id']:0);
 
 		$start = $page*$count;
 
@@ -748,6 +754,8 @@
 			$sql_extra .= ' AND `item`.`id` <= '.intval($max_id);
 		if ($exclude_replies > 0)
 			$sql_extra .= ' AND `item`.`parent` = `item`.`id`';
+		if ($conversation_id > 0)
+			$sql_extra .= ' AND `item`.`parent` = '.intval($conversation_id);
 
 		$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
@@ -811,6 +819,8 @@
 		$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
 		$max_id = (x($_REQUEST,'max_id')?$_REQUEST['max_id']:0);
 		//$since_id = 0;//$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
+		$exclude_replies = (x($_REQUEST,'exclude_replies')?1:0);
+		$conversation_id = (x($_REQUEST,'conversation_id')?$_REQUEST['conversation_id']:0);
 
 		$start = $page*$count;
 
@@ -818,6 +828,10 @@
 
 		if ($max_id > 0)
 			$sql_extra = 'AND `item`.`id` <= '.intval($max_id);
+		if ($exclude_replies > 0)
+			$sql_extra .= ' AND `item`.`parent` = `item`.`id`';
+		if ($conversation_id > 0)
+			$sql_extra .= ' AND `item`.`parent` = '.intval($conversation_id);
 
 		/*$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
@@ -944,7 +958,7 @@
 		//$include_entities = (x($_REQUEST,'include_entities')?$_REQUEST['include_entities']:false);
 
 		$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, `contact`.`nick` as `reply_author`,
-			`contact`.`name`, `contact`.`photo`, `contact`.`url` as `reply_url`, `contact`.`rel`,
+			`contact`.`name`, `contact`.`photo` as `reply_photo`, `contact`.`url` as `reply_url`, `contact`.`rel`,
 			`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
 			`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
 			FROM `item`, `contact`
@@ -957,7 +971,18 @@
 		);
 
 		if ($r[0]['body'] != "") {
-			$_REQUEST['body'] = html_entity_decode("&#x2672; ", ENT_QUOTES, 'UTF-8')."[url=".$r[0]['reply_url']."]".$r[0]['reply_author']."[/url] \n".$r[0]['body'];
+			if (intval(get_config('system','new_share'))) {
+				$post = "[share author='".str_replace("'", "&#039;", $r[0]['reply_author']).
+						"' profile='".$r[0]['reply_url'].
+						"' avatar='".$r[0]['reply_photo'].
+						"' link='".$r[0]['plink']."']";
+
+				$post .= $r[0]['body'];
+				$post .= "[/share]";
+				$_REQUEST['body'] = $post;
+			} else
+				$_REQUEST['body'] = html_entity_decode("&#x2672; ", ENT_QUOTES, 'UTF-8')."[url=".$r[0]['reply_url']."]".$r[0]['reply_author']."[/url] \n".$r[0]['body'];
+
 			$_REQUEST['profile_uid'] = api_user();
 			$_REQUEST['type'] = 'wall';
 			$_REQUEST['api_source'] = true;
@@ -1026,21 +1051,27 @@
 
 		$myurl = $a->get_baseurl() . '/profile/'. $a->user['nickname'];
 		$myurl = substr($myurl,strpos($myurl,'://')+3);
-		$myurl = str_replace(array('www.','.'),array('','\\.'),$myurl);
+		//$myurl = str_replace(array('www.','.'),array('','\\.'),$myurl);
+		$myurl = str_replace('www.','',$myurl);
 		$diasp_url = str_replace('/profile/','/u/',$myurl);
 
-		if (get_config('system','use_fulltext_engine'))
-                        $sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where (MATCH(`author-link`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(`tag`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode))) ",
-                                dbesc(protect_sprintf($myurl)),
-                                dbesc(protect_sprintf($myurl)),
-                                dbesc(protect_sprintf($diasp_url))
-                        );
-                else
-                        $sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where ( `author-link` like '%s' or `tag` like '%s' or tag like '%s' )) ",
-                                dbesc(protect_sprintf('%' . $myurl)),
-                                dbesc(protect_sprintf('%' . $myurl . ']%')),
-                                dbesc(protect_sprintf('%' . $diasp_url . ']%'))
-                        );
+/*		if (get_config('system','use_fulltext_engine'))
+			$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where (MATCH(`author-link`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(`tag`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode))) ",
+				dbesc(protect_sprintf($myurl)),
+				dbesc(protect_sprintf($myurl)),
+				dbesc(protect_sprintf($diasp_url))
+			);
+		else
+			$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where ( `author-link` like '%s' or `tag` like '%s' or tag like '%s' )) ",
+				dbesc(protect_sprintf('%' . $myurl)),
+				dbesc(protect_sprintf('%' . $myurl . ']%')),
+				dbesc(protect_sprintf('%' . $diasp_url . ']%'))
+			);
+*/
+		$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where `author-link` IN ('https://%s', 'http://%s') OR `mention`)",
+			dbesc(protect_sprintf($myurl)),
+			dbesc(protect_sprintf($myurl))
+		);
 
 		if ($max_id > 0)
 			$sql_extra .= ' AND `item`.`id` <= '.intval($max_id);
@@ -1102,14 +1133,19 @@
 		$page = (x($_REQUEST,'page')?$_REQUEST['page']-1:0);
 		if ($page<0) $page=0;
 		$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
-		$exclude_replies = (x($_REQUEST,'exclude_replies')?1:0);
 		//$since_id = 0;//$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
-		
+		$exclude_replies = (x($_REQUEST,'exclude_replies')?1:0);
+		$conversation_id = (x($_REQUEST,'conversation_id')?$_REQUEST['conversation_id']:0);
+
 		$start = $page*$count;
 
 		$sql_extra = '';
 		if ($user_info['self']==1) $sql_extra .= " AND `item`.`wall` = 1 ";
-		if ($exclude_replies > 0)  $sql_extra .= ' AND `item`.`parent` = `item`.`id`';
+
+		if ($exclude_replies > 0)
+			$sql_extra .= ' AND `item`.`parent` = `item`.`id`';
+		if ($conversation_id > 0)
+			$sql_extra .= ' AND `item`.`parent` = '.intval($conversation_id);
 
 		$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
@@ -1283,11 +1319,11 @@
 				$ret['text'] = bbcode($item['body']);
 			}
 			elseif ($_GET["getText"] == "plain") {
-				$ret['text'] = html2plain(bbcode($item['body']), 0);
+				$ret['text'] = html2plain(bbcode($item['body'], false, false, true), 0);
 			}
 		}
 		else {
-			$ret['text'] = $item['title']."\n".html2plain(bbcode($item['body']), 0);
+			$ret['text'] = $item['title']."\n".html2plain(bbcode($item['body'], false, false, true), 0);
 		}
 		if (isset($_GET["getUserObjects"]) && $_GET["getUserObjects"] == "false") {
 			unset($ret['sender']);
@@ -1331,7 +1367,7 @@
 			}
 
 			// Workaround for ostatus messages where the title is identically to the body
-			$statusbody = trim(html2plain(bbcode($item['body']), 0));
+			$statusbody = trim(html2plain(bbcode($item['body'], false, false, true), 0));
 			$statustitle = trim($item['title']);
 
 			if (($statustitle != '') and (strpos($statusbody, $statustitle) !== false))
@@ -1411,7 +1447,7 @@
 		return api_apply_template('test', $type, array('$ok' => $ok));
 
 	}
-	api_register_func('api/help/test','api_help_test',true);
+	api_register_func('api/help/test','api_help_test',false);
 
 	/**
 	 *  https://dev.twitter.com/docs/api/1/get/statuses/friends 

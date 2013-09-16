@@ -17,7 +17,7 @@ function notification($params) {
 	$product = FRIENDICA_PLATFORM;
 	$siteurl = $a->get_baseurl(true);
 	$thanks = t('Thank You,');
-	$sitename = get_config('config','sitename');
+	$sitename = $a->config['sitename'];
 	$site_admin = sprintf( t('%s Administrator'), $sitename);
 
 	$sender_name = $product;
@@ -56,12 +56,13 @@ function notification($params) {
 
 		$parent_id = $params['parent'];
 
-		// Check to see if there was already a tag notify for this post.
+		// Check to see if there was already a tag notify or comment notify for this post.
 		// If so don't create a second notification
 		
 		$p = null;
-		$p = q("select id from notify where type = %d and link = '%s' and uid = %d limit 1",
+		$p = q("select id from notify where ( type = %d or type = %d ) and link = '%s' and uid = %d limit 1",
 			intval(NOTIFY_TAGSELF),
+			intval(NOTIFY_COMMENT),
 			dbesc($params['link']),
 			intval($params['uid'])
 		);
@@ -213,11 +214,10 @@ function notification($params) {
 	}
 
 	if($params['type'] == NOTIFY_CONFIRM) {
-
 	}
 
 	if($params['type'] == NOTIFY_SYSTEM) {
-		
+
 	}
 
 	$h = array(
@@ -268,8 +268,14 @@ function notification($params) {
 	$datarray['type']  = $params['type'];
 	$datarray['verb']  = $params['verb'];
 	$datarray['otype'] = $params['otype'];
+	$datarray['abort'] = false;
  
 	call_hooks('enotify_store', $datarray);
+
+	if($datarray['abort']) {
+		pop_lang();
+		return;
+	}
 
 	// create notification entry in DB
 
@@ -299,6 +305,38 @@ function notification($params) {
 		return;
 	}
 
+	// we seem to have a lot of duplicate comment notifications due to race conditions, mostly from forums
+	// After we've stored everything, look again to see if there are any duplicates and if so remove them
+
+	$p = null;
+	$p = q("select id from notify where ( type = %d or type = %d ) and link = '%s' and uid = %d order by id",
+		intval(NOTIFY_TAGSELF),
+		intval(NOTIFY_COMMENT),
+		dbesc($params['link']),
+		intval($params['uid'])
+	);
+	if($p && (count($p) > 1)) {
+		for ($d = 1; $d < count($p); $d ++) {
+			q("delete from notify where id = %d limit 1",
+				intval($p[$d]['id'])
+			);
+		}
+
+		// only continue on if we stored the first one
+
+		if($notify_id != $p[0]['id']) {
+			pop_lang();
+			return;
+		}
+	}
+
+
+
+
+
+
+
+
 	$itemlink = $a->get_baseurl() . '/notify/view/' . $notify_id;
 	$msg = replace_macros($epreamble,array('$itemlink' => $itemlink));
 	$r = q("update notify set msg = '%s' where id = %d and uid = %d limit 1",
@@ -310,7 +348,7 @@ function notification($params) {
 
 	// send email notification if notification preferences permit
 
-	require_once('bbcode.php');
+	require_once('include/bbcode.php');
 	if((intval($params['notify_flags']) & intval($params['type'])) || $params['type'] == NOTIFY_SYSTEM) {
 
 		logger('notification: sending notification email');
@@ -382,6 +420,9 @@ intval($params['uid']), LOGGER_DEBUG);
 
 		call_hooks('enotify_mail', $datarray);
 
+		// check whether sending post content in email notifications is allowed
+		$content_allowed = !get_config('system','enotify_no_content');
+
 		// load the template for private message notifications
 		$tpl = get_markup_template('email_notify_html.tpl');
 		$email_html_body = replace_macros($tpl,array(
@@ -399,7 +440,8 @@ intval($params['uid']), LOGGER_DEBUG);
 			'$thanks'       => $datarray['thanks'],
 			'$site_admin'   => $datarray['site_admin'],
 			'$title'		=> $datarray['title'],
-			'$htmlversion'	=> $datarray['htmlversion'],	
+			'$htmlversion'	=> $datarray['htmlversion'],
+			'$content_allowed'	=> $content_allowed,
 		));
 		
 		// load the template for private message notifications
@@ -420,6 +462,7 @@ intval($params['uid']), LOGGER_DEBUG);
 			'$site_admin'   => $datarray['site_admin'],
 			'$title'		=> $datarray['title'],
 			'$textversion'	=> $datarray['textversion'],	
+			'$content_allowed'	=> $content_allowed,
 		));
 
 //		logger('text: ' . $email_text_body);
@@ -471,8 +514,8 @@ class enotify {
 		// generate a multipart/alternative message header
 		$messageHeader =
 			$params['additionalMailHeader'] .
-			"From: {$params['fromName']} <{$params['fromEmail']}>\n" . 
-			"Reply-To: {$params['fromName']} <{$params['replyTo']}>\n" .
+			"From: $fromName <{$params['fromEmail']}>\n" . 
+			"Reply-To: $fromName <{$params['replyTo']}>\n" .
 			"MIME-Version: 1.0\n" .
 			"Content-Type: multipart/alternative; boundary=\"{$mimeBoundary}\"";
 
@@ -493,7 +536,7 @@ class enotify {
 		// send the message
 		$res = mail(
 			$params['toEmail'],	 									// send to address
-			$params['messageSubject'],								// subject
+			$messageSubject,								// subject
 			$multipartMessageBody,	 						// message body
 			$messageHeader									// message headers
 		);

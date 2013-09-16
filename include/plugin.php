@@ -8,7 +8,7 @@ function uninstall_plugin($plugin){
 	q("DELETE FROM `addon` WHERE `name` = '%s' ",
 		dbesc($plugin)
 	);
-    
+
 	@include_once('addon/' . $plugin . '/' . $plugin . '.php');
 	if(function_exists($plugin . '_uninstall')) {
 		$func = $plugin . '_uninstall';
@@ -28,9 +28,9 @@ function install_plugin($plugin) {
 	if(function_exists($plugin . '_install')) {
 		$func = $plugin . '_install';
 		$func();
-		
+
 		$plugin_admin = (function_exists($plugin."_plugin_admin")?1:0);
-		
+
 		$r = q("INSERT INTO `addon` (`name`, `installed`, `timestamp`, `plugin_admin`) VALUES ( '%s', 1, %d , %d ) ",
 			dbesc($plugin),
 			intval($t),
@@ -158,10 +158,16 @@ function load_hooks() {
 
 if(! function_exists('call_hooks')) {
 function call_hooks($name, &$data = null) {
+	$stamp1 = microtime(true);
+
 	$a = get_app();
 
 	if((is_array($a->hooks)) && (array_key_exists($name,$a->hooks))) {
 		foreach($a->hooks[$name] as $hook) {
+			// Don't run a theme's hook if the user isn't using the theme
+			if(strpos($hook[0], 'view/theme/') !== false && strpos($hook[0], 'view/theme/'.current_theme()) === false)
+				continue;
+
 			@include_once($hook[0]);
 			if(function_exists($hook[1])) {
 				$func = $hook[1];
@@ -169,7 +175,7 @@ function call_hooks($name, &$data = null) {
 			}
 			else {
 				// remove orphan hooks
-				q("delete from hook where hook = '%s' and file = '$s' and function = '%s' limit 1",
+				q("delete from hook where hook = '%s' and file = '%s' and function = '%s' limit 1",
 					dbesc($name),
 					dbesc($hook[0]),
 					dbesc($hook[1])
@@ -177,9 +183,23 @@ function call_hooks($name, &$data = null) {
 			}
 		}
 	}
-
 }}
 
+//check if an app_menu hook exist for plugin $name.
+//Return true if the plugin is an app
+if(! function_exists('plugin_is_app')) {
+function plugin_is_app($name) {
+	$a = get_app();
+
+	if(is_array($a->hooks) && (array_key_exists('app_menu',$a->hooks))) {
+		foreach($a->hooks['app_menu'] as $hook) {
+			if($hook[0] == 'addon/'.$name.'/'.$name.'.php')
+				return true;
+		}
+	}
+	
+	return false;
+}}
 
 /*
  * parse plugin comment in search of plugin infos.
@@ -195,18 +215,24 @@ function call_hooks($name, &$data = null) {
 
 if (! function_exists('get_plugin_info')){
 function get_plugin_info($plugin){
+
+	$a = get_app();
+
 	$info=Array(
 		'name' => $plugin,
 		'description' => "",
 		'author' => array(),
 		'version' => ""
 	);
-	
+
 	if (!is_file("addon/$plugin/$plugin.php")) return $info;
-	
+
+	$stamp1 = microtime(true);
 	$f = file_get_contents("addon/$plugin/$plugin.php");
+	$a->save_timestamp($stamp1, "file");
+
 	$r = preg_match("|/\*.*\*/|msU", $f, $m);
-	
+
 	if ($r){
 		$ll = explode("\n", $m[0]);
 		foreach( $ll as $l ) {
@@ -226,10 +252,10 @@ function get_plugin_info($plugin){
 						$info[$k]=$v;
 					}
 				}
-				
+
 			}
 		}
-		
+
 	}
 	return $info;
 }}
@@ -238,7 +264,7 @@ function get_plugin_info($plugin){
 /*
  * parse theme comment in search of theme infos.
  * like
- * 	
+ *
  * 	 * Name: My Theme
  *   * Description: My Cool Theme
  * 	 * Version: 1.2.3
@@ -266,11 +292,14 @@ function get_theme_info($theme){
 		$info['unsupported'] = true;
 
 	if (!is_file("view/theme/$theme/theme.php")) return $info;
-	
+
+	$a = get_app();
+	$stamp1 = microtime(true);
 	$f = file_get_contents("view/theme/$theme/theme.php");
+	$a->save_timestamp($stamp1, "file");
+
 	$r = preg_match("|/\*.*\*/|msU", $f, $m);
-	
-	
+
 	if ($r){
 		$ll = explode("\n", $m[0]);
 		foreach( $ll as $l ) {
@@ -317,6 +346,42 @@ function get_theme_screenshot($theme) {
 	}
 	return($a->get_baseurl() . '/images/blank.png');
 }
+
+// install and uninstall theme
+if (! function_exists('uninstall_theme')){
+function uninstall_theme($theme){
+	logger("Addons: uninstalling theme " . $theme);
+    
+	@include_once("view/theme/$theme/theme.php");
+	if(function_exists("{$theme}_uninstall")) {
+		$func = "{$theme}_uninstall";
+		$func();
+	}
+}}
+
+if (! function_exists('install_theme')){
+function install_theme($theme) {
+	// silently fail if theme was removed
+
+	if(! file_exists("view/theme/$theme/theme.php"))
+		return false;
+
+	logger("Addons: installing theme $theme");
+
+	@include_once("view/theme/$theme/theme.php");
+
+	if(function_exists("{$theme}_install")) {
+		$func = "{$theme}_install";
+		$func();
+		return true;
+	}
+	else {
+		logger("Addons: FAILED installing theme $theme");
+		return false;
+	}
+
+}}
+
 
 
 // check service_class restrictions. If there are no service_classes defined, everything is allowed.

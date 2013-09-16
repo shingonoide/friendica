@@ -198,7 +198,8 @@ function profile_content(&$a, $update = 0) {
             	'acl' => (($is_owner) ? populate_acl($a->user, $celeb) : ''),
 	            'bang' => '',
     	        'visitor' => (($is_owner || $commvisitor) ? 'block' : 'none'),
-        	    'profile_uid' => $a->profile['profile_uid']
+        	    'profile_uid' => $a->profile['profile_uid'],
+				'acl_data' => ( $is_owner ? construct_acl_data($a, $a->user) : '' ), // For non-Javascript ACL selector
         	);
 
         	$o .= status_editor($a,$x);
@@ -257,8 +258,17 @@ function profile_content(&$a, $update = 0) {
 			}
 		}
 
-		$itemspage_network = get_pconfig(local_user(),'system','itemspage_network');
-		$itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 40);
+		//  check if we serve a mobile device and get the user settings 
+		//  accordingly
+		if ($a->is_mobile) { 
+		    $itemspage_network = get_pconfig(local_user(),'system','itemspage_mobile_network');
+		    $itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 20);
+		} else { 
+		    $itemspage_network = get_pconfig(local_user(),'system','itemspage_network');
+		    $itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 40);
+		}
+		//  now that we have the user settings, see if the theme forces 
+		//  a maximum item number which is lower then the user choice
 		if(($a->force_max_items > 0) && ($a->force_max_items < $itemspage_network))
 			$itemspage_network = $a->force_max_items;
 

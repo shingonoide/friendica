@@ -48,9 +48,9 @@ function new_contact($uid,$url,$interactive = false) {
 				$myaddr = bin2hex($a->get_baseurl() . '/profile/' . $a->user['nickname']);
 			else
 				$myaddr = bin2hex($a->user['nickname'] . '@' . $a->get_hostname());
- 
+
 			goaway($ret['request'] . "&addr=$myaddr");
-		
+
 			// NOTREACHED
 		}
 	}
@@ -61,7 +61,7 @@ function new_contact($uid,$url,$interactive = false) {
 			return $result;
 		}
 	}
-	
+
 
 
 
@@ -218,7 +218,7 @@ function new_contact($uid,$url,$interactive = false) {
 		group_add_member($uid,'',$contact_id,$g[0]['def_gid']);
 	}
 
-	require_once("Photo.php");
+	require_once("include/Photo.php");
 
 	$photos = import_profile_photo($ret['photo'],$uid,$contact_id);
 

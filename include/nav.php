@@ -8,8 +8,6 @@ function nav(&$a) {
 	 *
 	 */
 
-	$ssl_state = ((local_user()) ? true : false);
-
 	if(!(x($a->page,'nav')))
 		$a->page['nav'] = '';
 
@@ -18,6 +16,35 @@ function nav(&$a) {
 	 */
 
 	$a->page['nav'] .= '<div id="panel" style="display: none;"></div>' ;
+
+	$nav_info = nav_info($a);
+
+	/**
+	 * Build the page
+	 */
+
+	$tpl = get_markup_template('nav.tpl');
+
+	$a->page['nav'] .= replace_macros($tpl, array(
+        '$baseurl' => $a->get_baseurl(),
+		'$langselector' => lang_selector(),
+		'$sitelocation' => $nav_info['sitelocation'],
+		'$nav' => $nav_info['nav'],
+		'$banner' =>  $nav_info['banner'],
+		'$emptynotifications' => t('Nothing new here'),
+		'$userinfo' => $nav_info['userinfo'],
+		'$sel' => 	$a->nav_sel,
+		'$apps' => $a->apps,
+		'$clear_notifs' => t('Clear notifications')
+	));
+
+	call_hooks('page_header', $a->page['nav']);
+}
+
+
+function nav_info(&$a) {
+
+	$ssl_state = ((local_user()) ? true : false);
 
 	/**
 	 *
@@ -44,14 +71,14 @@ function nav(&$a) {
 
 	if(local_user()) {
 		$nav['logout'] = Array('logout',t('Logout'), "", t('End this session'));
-		
+
 		// user menu
 		$nav['usermenu'][] = Array('profile/' . $a->user['nickname'], t('Status'), "", t('Your posts and conversations'));
 		$nav['usermenu'][] = Array('profile/' . $a->user['nickname']. '?tab=profile', t('Profile'), "", t('Your profile page'));
 		$nav['usermenu'][] = Array('photos/' . $a->user['nickname'], t('Photos'), "", t('Your photos'));
 		$nav['usermenu'][] = Array('events/', t('Events'), "", t('Your events'));
 		$nav['usermenu'][] = Array('notes/', t('Personal notes'), "", t('Your personal photos'));
-		
+
 		// user info
 		$r = q("SELECT micro FROM contact WHERE uid=%d AND self=1", intval($a->user['uid']));
 		$userinfo = array(
@@ -130,10 +157,12 @@ function nav(&$a) {
 		$nav['messages']['inbox'] = array('message', t('Inbox'), "", t('Inbox'));
 		$nav['messages']['outbox']= array('message/sent', t('Outbox'), "", t('Outbox'));
 		$nav['messages']['new'] = array('message/new', t('New Message'), "", t('New Message'));
-		
+
 		if(is_array($a->identities) && count($a->identities) > 1) {
 			$nav['manage'] = array('manage', t('Manage'), "", t('Manage other pages'));
 		}
+
+		$nav['delegations'] = Array('delegate', t('Delegations'), "", t('Delegate Page Management'));
 
 		$nav['settings'] = array('settings', t('Settings'),"", t('Account settings'));
 		if(feature_enabled(local_user(),'multi_profiles'))
@@ -150,6 +179,9 @@ function nav(&$a) {
 	 }
 
 
+	 $nav['navigation'] = array('navigation/', t('Navigation'), "", t('Site map'));
+
+
 	/**
 	 *
 	 * Provide a banner/logo/whatever
@@ -162,22 +194,14 @@ function nav(&$a) {
 		$banner .= '<a href="http://friendica.com"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="http://friendica.com">Friendica</a></span>';
 
 
-	$tpl = get_markup_template('nav.tpl');
-
-	$a->page['nav'] .= replace_macros($tpl, array(
-        '$baseurl' => $a->get_baseurl(),
-		'$langselector' => lang_selector(),
-		'$sitelocation' => $sitelocation,
-		'$nav' => $nav,
-		'$banner' =>  $banner,
-		'$emptynotifications' => t('Nothing new here'),
-		'$userinfo' => $userinfo,
-		'$sel' => 	$a->nav_sel,
-		'$apps' => $a->apps,
-	));
-
-	call_hooks('page_header', $a->page['nav']);
+	return array(
+		'sitelocation' => $sitelocation,
+		'nav' => $nav,
+		'banner' => $banner,
+		'userinfo' => $userinfo,
+	);
 }
+
 
 /*
  * Set a menu item in navbar as selected

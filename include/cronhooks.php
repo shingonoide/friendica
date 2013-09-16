@@ -12,16 +12,26 @@ function cronhooks_run(&$argv, &$argc){
   
 	if(is_null($db)) {
 	    @include(".htconfig.php");
-    	require_once("dba.php");
+    	require_once("include/dba.php");
 	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
     	unset($db_host, $db_user, $db_pass, $db_data);
   	};
 
 	require_once('include/session.php');
 	require_once('include/datetime.php');
+	require_once('include/pidfile.php');
 
 	load_config('config');
 	load_config('system');
+
+	$lockpath = get_config('system','lockpath');
+	if ($lockpath != '') {
+		$pidfile = new pidfile($lockpath, 'cron.lck');
+		if($pidfile->is_already_running()) {
+			logger("cronhooks: Already running");
+			exit;
+		}
+	}
 
 	$a->set_baseurl(get_config('system','url'));
 

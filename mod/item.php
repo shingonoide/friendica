@@ -19,6 +19,7 @@ require_once('include/crypto.php');
 require_once('include/enotify.php');
 require_once('include/email.php');
 require_once('library/langdet/Text/LanguageDetect.php');
+require_once('include/tags.php');
 
 function item_post(&$a) {
 
@@ -43,6 +44,9 @@ function item_post(&$a) {
 	logger('postvars ' . print_r($_REQUEST,true), LOGGER_DATA);
 
 	$api_source = ((x($_REQUEST,'api_source') && $_REQUEST['api_source']) ? true : false);
+
+	$message_id = ((x($_REQUEST,'message_id') && $api_source)  ? strip_tags($_REQUEST['message_id'])       : '');
+
 	$return_path = ((x($_REQUEST,'return')) ? $_REQUEST['return'] : '');
 	$preview = ((x($_REQUEST,'preview')) ? intval($_REQUEST['preview']) : 0);
 
@@ -236,9 +240,23 @@ function item_post(&$a) {
 
 		if (version_compare(PHP_VERSION, '5.3.0', '>=')) {
 			$l = new Text_LanguageDetect;
-			$lng = $l->detectConfidence($naked_body);
+			//$lng = $l->detectConfidence($naked_body);
+			//$postopts = (($lng['language']) ? 'lang=' . $lng['language'] . ';' . $lng['confidence'] : '');
 
-			$postopts = (($lng['language']) ? 'lang=' . $lng['language'] . ';' . $lng['confidence'] : '');
+			$lng = $l->detect($naked_body, 3);
+
+			if (sizeof($lng) > 0) {
+				$postopts = "";
+
+				foreach ($lng as $language => $score) {
+					if ($postopts == "")
+						$postopts = "lang=";
+					else
+						$postopts .= ":";
+
+					$postopts .= $language.";".$score;
+				}
+			}
 
 			logger('mod_item: detect language' . print_r($lng,true) . $naked_body, LOGGER_DATA);
 		}
@@ -247,6 +265,10 @@ function item_post(&$a) {
 
 
 		$private = ((strlen($str_group_allow) || strlen($str_contact_allow) || strlen($str_group_deny) || strlen($str_contact_deny)) ? 1 : 0);
+
+
+		if($user['hidewall'])
+			$private = 2;
 
 		// If this is a comment, set the permissions from the parent.
 
@@ -571,7 +593,7 @@ function item_post(&$a) {
 	
 	$notify_type = (($parent) ? 'comment-new' : 'wall-new' );
 
-	$uri = item_new_uri($a->get_hostname(),$profile_uid);
+	$uri = (($message_id) ? $message_id : item_new_uri($a->get_hostname(),$profile_uid));
 
 	// Fallback so that we alway have a thr-parent
 	if(!$thr_parent)
@@ -671,6 +693,7 @@ function item_post(&$a) {
 			intval($post_id),
 			intval($profile_uid)
 		);
+		create_tags_from_itemuri($post_id, $profile_uid);
 
 		// update filetags in pconfig
                 file_tag_update_pconfig($uid,$categories_old,$categories_new,'category');
@@ -736,9 +759,21 @@ function item_post(&$a) {
 	if(count($r)) {
 		$post_id = $r[0]['id'];
 		logger('mod_item: saved item ' . $post_id);
+		create_tags_from_item($post_id);
 
 		// update filetags in pconfig
                 file_tag_update_pconfig($uid,$categories_old,$categories_new,'category');
+
+		// Store the fresh generated item into the cache
+		$cachefile = get_cachefile($datarray["guid"]."-".hash("md5", $datarray['body']));
+
+		if (($cachefile != '') AND !file_exists($cachefile)) {
+			$s = prepare_text($datarray['body']);
+			$stamp1 = microtime(true);
+			file_put_contents($cachefile, $s);
+			$a->save_timestamp($stamp1, "file");
+			logger('mod_item: put item '.$r[0]['id'].' into cachefile '.$cachefile);
+		}
 
 		if($parent) {
 
@@ -863,16 +898,25 @@ function item_post(&$a) {
 					. '<br />';
 				$disclaimer .= sprintf( t('You may visit them online at %s'), $a->get_baseurl() . '/profile/' . $a->user['nickname']) . EOL;
 				$disclaimer .= t('Please contact the sender by replying to this post if you do not wish to receive these messages.') . EOL; 
-
-				$subject  = email_header_encode('[Friendica]' . ' ' . sprintf( t('%s posted an update.'),$a->user['username']),'UTF-8');
-				$headers  = 'From: ' . email_header_encode($a->user['username'],'UTF-8') . ' <' . $a->user['email'] . '>' . "\n";
-				$headers .= 'MIME-Version: 1.0' . "\n";
-				$headers .= 'Content-Type: text/html; charset=UTF-8' . "\n";
-				$headers .= 'Content-Transfer-Encoding: 8bit' . "\n\n";
+                                if (!$datarray['title']=='') {
+                                    $subject = email_header_encode($datarray['title'],'UTF-8');
+                                } else {
+				    $subject = email_header_encode('[Friendica]' . ' ' . sprintf( t('%s posted an update.'),$a->user['username']),'UTF-8');
+                                }
 				$link = '<a href="' . $a->get_baseurl() . '/profile/' . $a->user['nickname'] . '"><img src="' . $author['thumb'] . '" alt="' . $a->user['username'] . '" /></a><br /><br />';
 				$html    = prepare_body($datarray);
 				$message = '<html><body>' . $link . $html . $disclaimer . '</body></html>';
-				@mail($addr, $subject, $message, $headers);
+                                include_once('include/html2plain.php');
+                                $params = array (
+                                    'fromName' => $a->user['username'],
+                                    'fromEmail' => $a->user['email'],
+                                    'toEmail' => $addr,
+                                    'replyTo' => $a->user['email'],
+                                    'messageSubject' => $subject,
+                                    'htmlVersion' => $message,
+                                    'textVersion' => html2plain($html.$disclaimer),
+                                );
+                                enotify::send($params);
 			}
 		}
 	}
@@ -923,10 +967,17 @@ function item_content(&$a) {
 
 	require_once('include/security.php');
 
+	$o = '';
 	if(($a->argc == 3) && ($a->argv[1] === 'drop') && intval($a->argv[2])) {
-		require_once('include/items.php');
-		drop_item($a->argv[2]);
+		require_once('include/items.php'); 
+		$o = drop_item($a->argv[2], !is_ajax());
+		if (is_ajax()){
+			// ajax return: [<item id>, 0 (no perm) | <owner id>] 
+			echo json_encode(array(intval($a->argv[2]), intval($o)));
+			killme();
+		}
 	}
+	return $o;
 }
 
 /**

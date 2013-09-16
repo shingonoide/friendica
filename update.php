@@ -1,6 +1,6 @@
 <?php
 
-define( 'UPDATE_VERSION' , 1157 );
+define( 'UPDATE_VERSION' , 1163 );
 
 /**
  *
@@ -1368,4 +1368,76 @@ ADD INDEX ( `datasize` ) ");
 
 	if(!$r) return UPDATE_FAILED;
 	return UPDATE_SUCCESS;
+}
+
+function update_1157() {
+	$r = q("CREATE TABLE  IF NOT EXISTS `dsprphotoq` (
+	  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+	  `uid` int(11) NOT NULL,
+	  `msg` mediumtext NOT NULL,
+	  `attempt` tinyint(4) NOT NULL,
+	  PRIMARY KEY (`id`)
+	  ) ENGINE=MyISAM DEFAULT CHARSET=utf8"
+	);
+
+	if($r)
+		return UPDATE_SUCCESS;
+}
+
+function update_1158() {
+	set_config('system', 'maintenance', 1);
+
+	// Wait for 15 seconds for current requests to
+	// clear before locking up the database
+	sleep(15);
+
+	$r = q("CREATE INDEX event_id ON item(`event-id`)");
+	set_config('system', 'maintenance', 0);
+
+	if($r)
+		return UPDATE_SUCCESS;
+
+	return UPDATE_FAILED;
+}
+
+function update_1159() {
+	$r = q("ALTER TABLE `term` ADD `aid` int(10) unsigned NOT NULL DEFAULT '0',
+		ADD `uid` int(10) unsigned NOT NULL DEFAULT '0',
+		ADD INDEX (`uid`),
+		ADD INDEX (`aid`)");
+
+	if(!$r)
+		return UPDATE_FAILED;
+
+	return UPDATE_SUCCESS;
+}
+
+function update_1160() {
+	set_config('system', 'maintenance', 1);
+
+	// Wait for 15 seconds for current requests to
+	// clear before locking up the database
+	sleep(15);
+
+	$r = q("ALTER TABLE `item` ADD `mention` TINYINT(1) NOT NULL DEFAULT '0', ADD INDEX (`mention`)");
+	set_config('system', 'maintenance', 0);
+
+	if(!$r)
+		return UPDATE_FAILED;
+
+	return UPDATE_SUCCESS;
+}
+
+function update_1161() {
+	$r = q("ALTER TABLE `pconfig` ADD INDEX (`cat`)");
+
+	if(!$r)
+		return UPDATE_FAILED;
+
+	return UPDATE_SUCCESS;
+}
+
+function update_1162() {
+	require_once('include/tags.php');
+	update_items();
 }

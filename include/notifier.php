@@ -37,6 +37,7 @@ require_once('include/html2plain.php');
  *		tag						(in photos.php, poke.php, tagger.php)
  *		tgroup					(in items.php)
  *		wall-new				(in photos.php, item.php)
+ *		removeme				(in Contact.php)
  *
  * and ITEM_ID is the id of the item in the database that needs to be sent to others.
  */
@@ -51,13 +52,13 @@ function notifier_run(&$argv, &$argc){
   
 	if(is_null($db)) {
 		@include(".htconfig.php");
-		require_once("dba.php");
+		require_once("include/dba.php");
 		$db = new dba($db_host, $db_user, $db_pass, $db_data);
 		        unset($db_host, $db_user, $db_pass, $db_data);
 	}
 
-	require_once("session.php");
-	require_once("datetime.php");
+	require_once("include/session.php");
+	require_once("include/datetime.php");
 	require_once('include/items.php');
 	require_once('include/bbcode.php');
 	require_once('include/email.php');
@@ -138,14 +139,17 @@ function notifier_run(&$argv, &$argc){
 		$r = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1", intval($item_id));
 		if (! $r)
 			return;
+
 		$user = $r[0];
 		$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND `self` = 1 LIMIT 1", intval($item_id));
 		if (! $r)
 			return;
+
 		$self = $r[0];
 		$r = q("SELECT * FROM `contact` WHERE `self` = 0 AND `uid` = %d", intval($item_id));
 		if(! $r)
 			return;
+
 		require_once('include/Contact.php');
 		foreach($r as $contact) {
 			terminate_friendship($user, $self, $contact);
@@ -309,7 +313,7 @@ function notifier_run(&$argv, &$argc){
 			}
 
 			$allow_people = expand_acl($parent['allow_cid']);
-			$allow_groups = expand_groups(expand_acl($parent['allow_gid']));
+			$allow_groups = expand_groups(expand_acl($parent['allow_gid']),true);
 			$deny_people  = expand_acl($parent['deny_cid']);
 			$deny_groups  = expand_groups(expand_acl($parent['deny_gid']));
 
@@ -771,14 +775,17 @@ function notifier_run(&$argv, &$argc){
 						$subject  = (($it['title']) ? email_header_encode($it['title'],'UTF-8') : t("\x28no subject\x29")) ;
 
 						// only expose our real email address to true friends
-
 						if(($contact['rel'] == CONTACT_IS_FRIEND) && (! $contact['blocked']))
-							$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $local_user[0]['email'] . '>' . "\n";
+							if($reply_to) {
+								$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $reply_to . '>' . "\n";
+								$headers .= 'Sender: '.$local_user[0]['email']."\n";
+							} else
+								$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $local_user[0]['email'] . '>' . "\n";
 						else
 							$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . t('noreply') . '@' . $a->get_hostname() . '>' . "\n";
 
-						if($reply_to)
-							$headers .= 'Reply-to: ' . $reply_to . "\n";
+						//if($reply_to)
+						//	$headers .= 'Reply-to: ' . $reply_to . "\n";
 
 						// for testing purposes: Collect exported mails
 						//$file = tempnam("/tmp/friendica/", "mail-out2-");
@@ -787,13 +794,28 @@ function notifier_run(&$argv, &$argc){
 						$headers .= 'Message-Id: <' . iri2msgid($it['uri']) . '>' . "\n";
 
 						if($it['uri'] !== $it['parent-uri']) {
-							$headers .= 'References: <' . iri2msgid($it['parent-uri']) . '>' . "\n";
-							if(!strlen($it['title'])) {
-								$r = q("SELECT `title` FROM `item` WHERE `parent-uri` = '%s' LIMIT 1",
-									dbesc($it['parent-uri']));
+							$headers .= "References: <".iri2msgid($it["parent-uri"]).">";
 
-								if(count($r) AND ($r[0]['title'] != ''))  
+							// If Threading is enabled, write down the correct parent
+							if (($it["thr-parent"] != "") and ($it["thr-parent"] != $it["parent-uri"]))
+								$headers .= " <".iri2msgid($it["thr-parent"]).">";
+							$headers .= "\n";
+
+							if(!$it['title']) {
+								$r = q("SELECT `title` FROM `item` WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
+									dbesc($it['parent-uri']),
+									intval($uid));
+
+								if(count($r) AND ($r[0]['title'] != ''))
 									$subject = $r[0]['title'];
+								else {
+									$r = q("SELECT `title` FROM `item` WHERE `parent-uri` = '%s' AND `uid` = %d LIMIT 1",
+										dbesc($it['parent-uri']),
+										intval($uid));
+
+									if(count($r) AND ($r[0]['title'] != ''))
+										$subject = $r[0]['title'];
+								}
 							}
 							if(strncasecmp($subject,'RE:',3))
 								$subject = 'Re: '.$subject;
@@ -859,12 +881,15 @@ function notifier_run(&$argv, &$argc){
 				case NETWORK_FACEBOOK:
 					if(get_config('system','dfrn_only'))
 						break;
+				case NETWORK_PUMPIO:
+					if(get_config('system','dfrn_only'))
+						break;
 				default:
 					break;
 			}
 		}
 	}
-		
+
 	// send additional slaps to mentioned remote tags (@foo@example.com)
 
 	if($slap && count($url_recipients) && ($followup || $top_level) && $public_message && (! $expire)) {

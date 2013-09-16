@@ -3,6 +3,14 @@
 require_once("include/oembed.php");
 require_once('include/event.php');
 
+function bb_cleanstyle($st) {
+  return "<span style=\"".cleancss($st[1]).";\">".$st[2]."</span>";
+}
+
+function bb_cleanclass($st) {
+  return "<span class=\"".cleancss($st[1])."\">".$st[2]."</span>";
+}
+
 function cleancss($input) {
 
 	$cleaned = "";
@@ -28,7 +36,11 @@ function stripcode_br_cb($s) {
 
 function tryoembed($match){
 	$url = ((count($match)==2)?$match[1]:$match[2]);
-//	logger("tryoembed: $url");
+
+	// Always embed the SSL version
+	$url = str_replace("http://www.youtube.com/", "https://www.youtube.com/", $url);
+
+	//logger("tryoembed: $url");
 
 	$o = oembed_fetch_url($url);
 
@@ -206,12 +218,156 @@ function bb_replace_images($body, $images) {
 	return $newbody;
 }}
 
+function bb_ShareAttributes($match) {
 
+        $attributes = $match[1];
+
+        $author = "";
+        preg_match("/author='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $author = html_entity_decode($matches[1],ENT_QUOTES,'UTF-8');
+
+        preg_match('/author="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $author = $matches[1];
+
+        $link = "";
+        preg_match("/link='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $link = $matches[1];
+
+        preg_match('/link="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $link = $matches[1];
+
+        $avatar = "";
+        preg_match("/avatar='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $avatar = $matches[1];
+
+        preg_match('/avatar="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $avatar = $matches[1];
+
+        $profile = "";
+        preg_match("/profile='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $profile = $matches[1];
+
+        preg_match('/profile="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $profile = $matches[1];
+
+        $posted = "";
+        preg_match("/posted='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $posted = $matches[1];
+
+        preg_match('/posted="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $posted = $matches[1];
+		$reldate = (($posted) ? " " . relative_date($posted) : '');
+
+        $headline = '<br /><div class="shared_header">';
+
+	if ($avatar != "")
+		$headline .= '<img src="'.$avatar.'" height="32" width="32" >';
+
+	$headline .= sprintf(t('<span><a href="%s" target="external-link">%s</a> wrote the following <a href="%s" target="external-link">post</a>'.$reldate.':</span>'), $profile, $author, $link);
+
+        $headline .= "</div>";
+
+        $text = $headline.'<blockquote class="shared_content">'.trim($match[2])."</blockquote>";
+
+        return($text);
+}
+
+function bb_ShareAttributesSimple($match) {
+
+        $attributes = $match[1];
+
+        $author = "";
+        preg_match("/author='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $author = html_entity_decode($matches[1],ENT_QUOTES,'UTF-8');
+
+        preg_match('/author="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $author = $matches[1];
+
+        $profile = "";
+        preg_match("/profile='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $profile = $matches[1];
+
+        preg_match('/profile="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $profile = $matches[1];
+
+	$userid = GetProfileUsername($profile,$author);
+
+        $text = "<br />".html_entity_decode("&#x2672; ", ENT_QUOTES, 'UTF-8').' <a href="'.$profile.'">'.$userid."</a>: <br />»".$match[2]."«";
+
+        return($text);
+}
+function bb_ShareAttributesSimple2($match) {
+
+        $attributes = $match[1];
+
+        $author = "";
+        preg_match("/author='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $author = html_entity_decode($matches[1],ENT_QUOTES,'UTF-8');
+
+        preg_match('/author="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $author = $matches[1];
+
+        $profile = "";
+        preg_match("/profile='(.*?)'/ism", $attributes, $matches);
+        if ($matches[1] != "")
+                $profile = $matches[1];
+
+        preg_match('/profile="(.*?)"/ism', $attributes, $matches);
+        if ($matches[1] != "")
+                $profile = $matches[1];
+
+	$userid = GetProfileUsername($profile,$author);
+
+        $text = "<br />".html_entity_decode("&#x2672; ", ENT_QUOTES, 'UTF-8').' <a href="'.$profile.'">'.$userid."</a>: <br />".$match[2];
+
+        return($text);
+}
+
+function GetProfileUsername($profile, $username) {
+	$friendica = preg_replace("=https?://(.*)/profile/(.*)=ism", "$2@$1", $profile);
+	if ($friendica != $profile)
+		return($friendica);
+
+	$diaspora = preg_replace("=https?://(.*)/u/(.*)=ism", "$2@$1", $profile);
+	if ($diaspora != $profile)
+		return($diaspora);
+
+	$StatusnetHost = preg_replace("=https?://(.*)/user/(.*)=ism", "$1", $profile);
+	if ($StatusnetHost != $profile) {
+		$StatusnetUser = preg_replace("=https?://(.*)/user/(.*)=ism", "$2", $profile);
+		if ($StatusnetUser != $profile) {
+			$UserData = fetch_url("http://".$StatusnetHost."/api/users/show.json?user_id=".$StatusnetUser);
+			$user = json_decode($UserData);
+			if ($user)
+				return($user->screen_name."@".$StatusnetHost);
+		}
+	}
+
+	return($username);
+}
 
 	// BBcode 2 HTML was written by WAY2WEB.net
 	// extended to work with Mistpark/Friendica - Mike Macgirvin
 
-function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
+function bbcode($Text,$preserve_nl = false, $tryoembed = true, $simplehtml = false) {
+
+	$stamp1 = microtime(true);
 
 	$a = get_app();
 
@@ -248,6 +404,17 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 	$Text = str_replace("<", "&lt;", $Text);
 	$Text = str_replace(">", "&gt;", $Text);
 
+	// remove some newlines before the general conversion
+	$Text = preg_replace("/\s?\[share(.*?)\]\s?(.*?)\s?\[\/share\]\s?/ism","[share$1]$2[/share]",$Text);
+	$Text = preg_replace("/\s?\[quote(.*?)\]\s?(.*?)\s?\[\/quote\]\s?/ism","[quote$1]$2[/quote]",$Text);
+
+	$Text = preg_replace("/\n\[code\]/ism", "[code]", $Text);
+	$Text = preg_replace("/\[\/code\]\n/ism", "[/code]", $Text);
+
+	// when the content is meant exporting to other systems then remove the avatar picture since this doesn't really look good on these systems
+	if (!$tryoembed)
+		$Text = preg_replace("/\[share(.*?)avatar\s?=\s?'.*?'\s?(.*?)\]\s?(.*?)\s?\[\/share\]\s?/ism","\n[share$1$2]$3[/share]",$Text);
+
 	// Convert new line chars to html <br /> tags
 
 	// nlbr seems to be hopelessly messed up
@@ -255,7 +422,19 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 
 	// We'll emulate it.
 
+	$Text = trim($Text);
 	$Text = str_replace("\r\n","\n", $Text);
+
+	// removing multiplicated newlines
+	if (get_config("system", "remove_multiplicated_lines")) {
+		$search = array("\n\n\n", "\n ", " \n", "[/quote]\n\n", "\n[/quote]", "[/li]\n", "\n[li]", "\n[ul]", "[/ul]\n");
+		$replace = array("\n\n", "\n", "\n", "[/quote]\n", "[/quote]", "[/li]", "[li]", "[ul]", "[/ul]");
+		do {
+			$oldtext = $Text;
+			$Text = str_replace($search, $replace, $Text);
+		} while ($oldtext != $Text);
+	}
+
 	$Text = str_replace(array("\r","\n"), array('<br />','<br />'), $Text);
 
 	if($preserve_nl)
@@ -271,7 +450,7 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 
 	// Perform URL Search
 
-	$Text = preg_replace("/([^\]\=]|^)(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\%\$\!\+\,]+)/ism", '$1<a href="$2" target="external-link">$2</a>', $Text);
+	$Text = preg_replace("/([^\]\='".'"'."]|^)(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\%\$\!\+\,]+)/ism", '$1<a href="$2" target="external-link">$2</a>', $Text);
 
 	if ($tryoembed)
 		$Text = preg_replace_callback("/\[bookmark\=([^\]]*)\].*?\[\/bookmark\]/ism",'tryoembed',$Text);
@@ -284,6 +463,10 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 	$Text = preg_replace("/\[url\]([$URLSearchString]*)\[\/url\]/ism", '<a href="$1" target="external-link">$1</a>', $Text);
 	$Text = preg_replace("/\[url\=([$URLSearchString]*)\](.*?)\[\/url\]/ism", '<a href="$1" target="external-link">$2</a>', $Text);
 	//$Text = preg_replace("/\[url\=([$URLSearchString]*)\]([$URLSearchString]*)\[\/url\]/ism", '<a href="$1" target="_blank">$2</a>', $Text);
+
+	// Red compatibility, though the link can't be authenticated on Friendica
+	$Text = preg_replace("/\[zrl\=([$URLSearchString]*)\](.*?)\[\/zrl\]/ism", '<a href="$1" target="external-link">$2</a>', $Text);
+
 
 	// we may need to restrict this further if it picks up too many strays
 	// link acct:user@host to a webfinger profile redirector
@@ -325,10 +508,10 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 	$Text = str_replace("[*]", "<li>", $Text);
 
 	// Check for style sheet commands
-	$Text = preg_replace("(\[style=(.*?)\](.*?)\[\/style\])ism","<span style=\"$1;\">$2</span>",$Text);
+	$Text = preg_replace_callback("(\[style=(.*?)\](.*?)\[\/style\])ism","bb_cleanstyle",$Text);
 
 	// Check for CSS classes
-	$Text = preg_replace("(\[class=(.*?)\](.*?)\[\/class\])ism","<span class=\"$1\">$2</span>",$Text);
+	$Text = preg_replace_callback("(\[class=(.*?)\](.*?)\[\/class\])ism","bb_cleanclass",$Text);
 
  	// handle nested lists
 	$endlessloop = 0;
@@ -417,15 +600,24 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 	// [img=widthxheight]image source[/img]
 	//$Text = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '<img src="$3" style="height: $2px; width: $1px;" >', $Text);
 	$Text = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '<img src="$3" style="width: $1px;" >', $Text);
+	$Text = preg_replace("/\[zmg\=([0-9]*)x([0-9]*)\](.*?)\[\/zmg\]/ism", '<img class="zrl" src="$3" style="width: $1px;" >', $Text);
 
 	// Images
 	// [img]pathtoimage[/img]
 	$Text = preg_replace("/\[img\](.*?)\[\/img\]/ism", '<img src="$1" alt="' . t('Image/photo') . '" />', $Text);
+	$Text = preg_replace("/\[zmg\](.*?)\[\/zmg\]/ism", '<img src="$1" alt="' . t('Image/photo') . '" />', $Text);
 
-
+	// Shared content
+	if (!$simplehtml)
+		$Text = preg_replace_callback("/\[share(.*?)\](.*?)\[\/share\]/ism","bb_ShareAttributes",$Text);
+	elseif ($simplehtml == 1)
+		$Text = preg_replace_callback("/\[share(.*?)\](.*?)\[\/share\]/ism","bb_ShareAttributesSimple",$Text);
+	elseif ($simplehtml == 2)
+		$Text = preg_replace_callback("/\[share(.*?)\](.*?)\[\/share\]/ism","bb_ShareAttributesSimple2",$Text);
 
 	$Text = preg_replace("/\[crypt\](.*?)\[\/crypt\]/ism",'<br/><img src="' .$a->get_baseurl() . '/images/lock_icon.gif" alt="' . t('Encrypted content') . '" title="' . t('Encrypted content') . '" /><br />', $Text);
-	$Text = preg_replace("/\[crypt=(.*?)\](.*?)\[\/crypt\]/ism",'<br/><img src="' .$a->get_baseurl() . '/images/lock_icon.gif" alt="' . t('Encrypted content') . '" title="' . '$1' . ' ' . t('Encrypted content') . '" /><br />', $Text);
+	$Text = preg_replace("/\[crypt(.*?)\](.*?)\[\/crypt\]/ism",'<br/><img src="' .$a->get_baseurl() . '/images/lock_icon.gif" alt="' . t('Encrypted content') . '" title="' . '$1' . ' ' . t('Encrypted content') . '" /><br />', $Text);
+	//$Text = preg_replace("/\[crypt=(.*?)\](.*?)\[\/crypt\]/ism",'<br/><img src="' .$a->get_baseurl() . '/images/lock_icon.gif" alt="' . t('Encrypted content') . '" title="' . '$1' . ' ' . t('Encrypted content') . '" /><br />', $Text);
 
 
 	// Try to Oembed
@@ -450,19 +642,19 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 
 	// Youtube extensions
 	if ($tryoembed) {
-		$Text = preg_replace_callback("/\[youtube\](https?:\/\/www.youtube.com\/watch\?v\=.*?)\[\/youtube\]/ism", 'tryoembed', $Text);        
-		$Text = preg_replace_callback("/\[youtube\](www.youtube.com\/watch\?v\=.*?)\[\/youtube\]/ism", 'tryoembed', $Text);        
-		$Text = preg_replace_callback("/\[youtube\](https?:\/\/youtu.be\/.*?)\[\/youtube\]/ism",'tryoembed',$Text); 
+		$Text = preg_replace_callback("/\[youtube\](https?:\/\/www.youtube.com\/watch\?v\=.*?)\[\/youtube\]/ism", 'tryoembed', $Text);
+		$Text = preg_replace_callback("/\[youtube\](www.youtube.com\/watch\?v\=.*?)\[\/youtube\]/ism", 'tryoembed', $Text);
+		$Text = preg_replace_callback("/\[youtube\](https?:\/\/youtu.be\/.*?)\[\/youtube\]/ism",'tryoembed',$Text);
 	}
 
-	$Text = preg_replace("/\[youtube\]https?:\/\/www.youtube.com\/watch\?v\=(.*?)\[\/youtube\]/ism",'[youtube]$1[/youtube]',$Text); 
-	$Text = preg_replace("/\[youtube\]https?:\/\/www.youtube.com\/embed\/(.*?)\[\/youtube\]/ism",'[youtube]$1[/youtube]',$Text); 
+	$Text = preg_replace("/\[youtube\]https?:\/\/www.youtube.com\/watch\?v\=(.*?)\[\/youtube\]/ism",'[youtube]$1[/youtube]',$Text);
+	$Text = preg_replace("/\[youtube\]https?:\/\/www.youtube.com\/embed\/(.*?)\[\/youtube\]/ism",'[youtube]$1[/youtube]',$Text);
 	$Text = preg_replace("/\[youtube\]https?:\/\/youtu.be\/(.*?)\[\/youtube\]/ism",'[youtube]$1[/youtube]',$Text);
 
 	if ($tryoembed)
-		$Text = preg_replace("/\[youtube\]([A-Za-z0-9\-_=]+)(.*?)\[\/youtube\]/ism", '<iframe width="' . $a->videowidth . '" height="' . $a->videoheight . '" src="http://www.youtube.com/embed/$1" frameborder="0" ></iframe>', $Text);
+		$Text = preg_replace("/\[youtube\]([A-Za-z0-9\-_=]+)(.*?)\[\/youtube\]/ism", '<iframe width="' . $a->videowidth . '" height="' . $a->videoheight . '" src="https://www.youtube.com/embed/$1" frameborder="0" ></iframe>', $Text);
 	else
-		$Text = preg_replace("/\[youtube\]([A-Za-z0-9\-_=]+)(.*?)\[\/youtube\]/ism", "http://www.youtube.com/watch?v=$1", $Text);
+		$Text = preg_replace("/\[youtube\]([A-Za-z0-9\-_=]+)(.*?)\[\/youtube\]/ism", "https://www.youtube.com/watch?v=$1", $Text);
 
 
 	if ($tryoembed) {
@@ -516,33 +708,48 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true) {
 	$Text = preg_replace('/\&quot\;/','"',$Text);
 
 	// fix any escaped ampersands that may have been converted into links
-	$Text = preg_replace("/\<(.*?)(src|href)=(.*?)\&amp\;(.*?)\>/ism",'<$1$2=$3&$4>',$Text);
-	$Text = preg_replace("/\<(.*?)(src|href)=\"[^hfm](.*?)\>/ism",'<$1$2="">',$Text);
+	$Text = preg_replace("/\<([^>]*?)(src|href)=(.*?)\&amp\;(.*?)\>/ism",'<$1$2=$3&$4>',$Text);
+	$Text = preg_replace("/\<([^>]*?)(src|href)=\"(?!http|ftp|mailto|cid)(.*?)\>/ism",'<$1$2="">',$Text);
 
 	if($saved_image)
 		$Text = bb_replace_images($Text, $saved_image);
 
 	// Clean up the HTML by loading and saving the HTML with the DOM
 	// Only do it when it has to be done - for performance reasons
-	if (!$tryoembed) {
-		$doc = new DOMDocument();
-		$doc->preserveWhiteSpace = false;
+	// Update: Now it is done every time - since bad structured html can break a whole page
+	//if (!$tryoembed) {
+	//	$doc = new DOMDocument();
+	//	$doc->preserveWhiteSpace = false;
 
-		$Text = mb_convert_encoding($Text, 'HTML-ENTITIES', "UTF-8");
+	//	$Text = mb_convert_encoding($Text, 'HTML-ENTITIES', "UTF-8");
 
-		$doctype = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">';
-		@$doc->loadHTML($doctype."<html><body>".$Text."</body></html>");
+	//	$doctype = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">';
+	//	@$doc->loadHTML($doctype."<html><body>".$Text."</body></html>");
 
-		$Text = $doc->saveHTML();
-		$Text = str_replace(array("<html><body>", "</body></html>", $doctype), array("", "", ""), $Text);
+	//	$Text = $doc->saveHTML();
+	//	$Text = str_replace(array("<html><body>", "</body></html>", $doctype), array("", "", ""), $Text);
 
-		$Text = str_replace('<br></li>','</li>', $Text);
+	//	$Text = str_replace('<br></li>','</li>', $Text);
 
-		$Text = mb_convert_encoding($Text, "UTF-8", 'HTML-ENTITIES');
+	//	$Text = mb_convert_encoding($Text, "UTF-8", 'HTML-ENTITIES');
+	//}
+
+	// Clean up some useless linebreaks in lists
+	//$Text = str_replace('<br /><ul','<ul ', $Text);
+	//$Text = str_replace('</ul><br />','</ul>', $Text);
+	//$Text = str_replace('</li><br />','</li>', $Text);
+	//$Text = str_replace('<br /><li>','<li>', $Text);
+	//	$Text = str_replace('<br /><ul','<ul ', $Text);
+
+	// Remove all hashtag addresses
+	if (!$tryoembed AND get_config("system", "remove_hashtags_on_export")) {
+		$pattern = '/#<a.*?href="(.*?)".*?>(.*?)<\/a>/is';
+		$Text = preg_replace($pattern, '#$2', $Text);
 	}
 
 	call_hooks('bbcode',$Text);
 
+	$a->save_timestamp($stamp1, "parser");
+
 	return $Text;
 }
-

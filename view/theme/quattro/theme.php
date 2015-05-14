@@ -1,7 +1,7 @@
 <?php
 /**
  * Name: Quattro
- * Version: 0.5
+ * Version: 0.6
  * Author: Fabio <http://kirgroup.com/profile/fabrixxm>
  * Maintainer: Fabio <http://kirgroup.com/profile/fabrixxm>
  * Maintainer: Tobias <https://diekershoff.homeunix.net/friendica/profile/tobias>
@@ -18,12 +18,48 @@ $a->page['htmlhead'] .= <<< EOT
 $(document).ready(function(){
     $('nav').bind('nav-update', function(e,data){
         var notifCount = $(data).find('notif').attr('count');
+        var intro = $(data).find('intro').text();
+        var mail = $(data).find('mail').text();
+        
+        console.log(intro,mail);
+        
         if (notifCount > 0 ) {
             Tinycon.setBubble(notifCount);
         } else {
             Tinycon.setBubble('');
         }
+        
+        if (intro>0){
+			$("#nav-introductions-link").addClass("on");
+		} else {
+			$("#nav-introductions-link").removeClass("on");
+		}
+		
+        if (mail>0){
+			$("#nav-messages-link").addClass("on");
+		} else {
+			$("#nav-messages-link").removeClass("on");
+		}
+		
     });
+	
+	/* 
+	 * show and hide contact action buttons in 
+	 * contacts page on contacts' checkbox selection
+	 */
+	$('.contact-select').bind('click', function(e) {
+		var y = e.clientY;
+		var elm = $("#contacts-actions");
+		y=y-40;
+		if (y<0) y=0;
+		if (y+elm.height() > $("html").height()) y=$("html").height()-elm.height();
+		elm.css('top', y+"px");
+		if ($(".contact-select:checked").length > 0) {
+			elm.show();
+		} else {
+			elm.hide();
+		}
+	});
 });        
 
 function insertFormatting(comment,BBcode,id) {
@@ -72,43 +108,44 @@ function cmtBbOpen(id) {
 function cmtBbClose(id) {
 	$("#comment-edit-bb-" + id).hide();
 }
+
 $(document).ready(function() {
 
-$('html').click(function() { $("#nav-notifications-menu" ).hide(); });
+	$('html').click(function() { $("#nav-notifications-menu" ).hide(); });
 
-$('.group-edit-icon').hover(
-	function() {
-		$(this).addClass('icon'); $(this).removeClass('iconspacer');},
-	function() {
-		$(this).removeClass('icon'); $(this).addClass('iconspacer');}
-	);
+	$('.group-edit-icon').hover(
+		function() {
+			$(this).addClass('icon'); $(this).removeClass('iconspacer');},
+		function() {
+			$(this).removeClass('icon'); $(this).addClass('iconspacer');}
+		);
 
-$('.sidebar-group-element').hover(
-	function() {
-		id = $(this).attr('id');
-		$('#edit-' + id).addClass('icon'); $('#edit-' + id).removeClass('iconspacer');},
+	$('.sidebar-group-element').hover(
+		function() {
+			id = $(this).attr('id');
+			$('#edit-' + id).addClass('icon'); $('#edit-' + id).removeClass('iconspacer');},
 
-	function() {
-		id = $(this).attr('id');
-		$('#edit-' + id).removeClass('icon');$('#edit-' + id).addClass('iconspacer');}
-	);
+		function() {
+			id = $(this).attr('id');
+			$('#edit-' + id).removeClass('icon');$('#edit-' + id).addClass('iconspacer');}
+		);
 
 
-$('.savedsearchdrop').hover(
-	function() {
-		$(this).addClass('drop'); $(this).addClass('icon'); $(this).removeClass('iconspacer');},
-	function() {
-		$(this).removeClass('drop'); $(this).removeClass('icon'); $(this).addClass('iconspacer');}
-	);
+	$('.savedsearchdrop').hover(
+		function() {
+			$(this).addClass('drop'); $(this).addClass('icon'); $(this).removeClass('iconspacer');},
+		function() {
+			$(this).removeClass('drop'); $(this).removeClass('icon'); $(this).addClass('iconspacer');}
+		);
 
-$('.savedsearchterm').hover(
-	function() {
-		id = $(this).attr('id');
-		$('#drop-' + id).addClass('icon'); 	$('#drop-' + id).addClass('drophide'); $('#drop-' + id).removeClass('iconspacer');},
+	$('.savedsearchterm').hover(
+		function() {
+			id = $(this).attr('id');
+			$('#drop-' + id).addClass('icon'); 	$('#drop-' + id).addClass('drophide'); $('#drop-' + id).removeClass('iconspacer');},
 
-	function() {
-		id = $(this).attr('id');
-		$('#drop-' + id).removeClass('icon');$('#drop-' + id).removeClass('drophide'); $('#drop-' + id).addClass('iconspacer');}
+		function() {
+			id = $(this).attr('id');
+			$('#drop-' + id).removeClass('icon');$('#drop-' + id).removeClass('drophide'); $('#drop-' + id).addClass('iconspacer');}
 	);
 
 });

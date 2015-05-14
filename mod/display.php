@@ -1,6 +1,5 @@
 <?php
 
-
 function display_init(&$a) {
 
 	if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
@@ -8,10 +7,204 @@ function display_init(&$a) {
 	}
 
 	$nick = (($a->argc > 1) ? $a->argv[1] : '');
-	profile_load($a,$nick);
+	$profiledata = array();
+
+	// If there is only one parameter, then check if this parameter could be a guid
+	if ($a->argc == 2) {
+		$nick = "";
+		$itemuid = 0;
+
+		// Does the local user have this item?
+		if (local_user()) {
+			$r = q("SELECT `id`, `parent`, `author-name`, `author-link`, `author-avatar`, `network`, `body`, `uid` FROM `item`
+				WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+					AND `guid` = '%s' AND `uid` = %d", $a->argv[1], local_user());
+			if (count($r)) {
+				$nick = $a->user["nickname"];
+				$itemuid = local_user();
+			}
+		}
+
+		// Or is it anywhere on the server?
+		if ($nick == "") {
+			$r = q("SELECT `user`.`nickname`, `item`.`id`, `item`.`parent`, `item`.`author-name`,
+				`item`.`author-link`, `item`.`author-avatar`, `item`.`network`, `item`.`uid`, `item`.`body`
+				FROM `item` INNER JOIN `user` ON `user`.`uid` = `item`.`uid`
+				WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+					AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
+					AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
+					AND `item`.`private` = 0 AND NOT `user`.`hidewall`
+					AND `item`.`guid` = '%s'", $a->argv[1]);
+				//	AND `item`.`private` = 0 AND `item`.`wall` = 1
+			if (count($r)) {
+				$nick = $r[0]["nickname"];
+				$itemuid = $r[0]["uid"];
+			}
+		}
+
+		// Is it an item with uid=0?
+		if ($nick == "") {
+			$r = q("SELECT `item`.`id`, `item`.`parent`, `item`.`author-name`,
+				`item`.`author-link`, `item`.`author-avatar`, `item`.`network`, `item`.`uid`, `item`.`body`
+				FROM `item` WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+					AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
+					AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
+					AND `item`.`private` = 0 AND `item`.`uid` = 0
+					AND `item`.`guid` = '%s'", $a->argv[1]);
+				//	AND `item`.`private` = 0 AND `item`.`wall` = 1
+		}
+		if (count($r)) {
+			if ($r[0]["id"] != $r[0]["parent"])
+				$r = q("SELECT `id`, `author-name`, `author-link`, `author-avatar`, `network`, `body`, `uid` FROM `item`
+					WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+						AND `id` = %d", $r[0]["parent"]);
+
+			$profiledata = display_fetchauthor($a, $r[0]);
+
+			if (strstr(normalise_link($profiledata["url"]), normalise_link($a->get_baseurl()))) {
+				$nickname = str_replace(normalise_link($a->get_baseurl())."/profile/", "", normalise_link($profiledata["url"]));
+
+				if (($nickname != $a->user["nickname"])) {
+					$r = q("SELECT `profile`.`uid` AS `profile_uid`, `profile`.* , `contact`.`avatar-date` AS picdate, `user`.* FROM `profile`
+						INNER JOIN `contact` on `contact`.`uid` = `profile`.`uid` INNER JOIN `user` ON `profile`.`uid` = `user`.`uid`
+						WHERE `user`.`nickname` = '%s' AND `profile`.`is-default` = 1 and `contact`.`self` = 1 LIMIT 1",
+						dbesc($nickname)
+					);
+					if (count($r))
+						$profiledata = $r[0];
+
+					$profiledata["network"] = NETWORK_DFRN;
+				} else
+					$profiledata = array();
+			}
+		} else {
+			$a->error = 404;
+			notice( t('Item not found.') . EOL);
+			return;
+		}
+	}
+
+	profile_load($a, $nick, 0, $profiledata);
 
 }
 
+function display_fetchauthor($a, $item) {
+	require_once("mod/proxy.php");
+	require_once("include/bbcode.php");
+
+	$profiledata = array();
+	$profiledata["uid"] = -1;
+	$profiledata["nickname"] = $item["author-name"];
+	$profiledata["name"] = $item["author-name"];
+	$profiledata["picdate"] = "";
+	$profiledata["photo"] = proxy_url($item["author-avatar"]);
+	$profiledata["url"] = $item["author-link"];
+	$profiledata["network"] = $item["network"];
+
+	// Fetching further contact data from the contact table
+	$r = q("SELECT `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d",
+		normalise_link($profiledata["url"]), $item["uid"]);
+	if (count($r)) {
+		$profiledata["photo"] = proxy_url($r[0]["photo"]);
+		$profiledata["address"] = proxy_parse_html(bbcode($r[0]["location"]));
+		$profiledata["about"] = proxy_parse_html(bbcode($r[0]["about"]));
+		if ($r[0]["nick"] != "")
+			$profiledata["nickname"] = $r[0]["nick"];
+	}
+
+	// Fetching profile data from unique contacts
+	$r = q("SELECT `avatar`, `nick`, `location`, `about` FROM `unique_contacts` WHERE `url` = '%s'", normalise_link($profiledata["url"]));
+	if (count($r)) {
+		if ($profiledata["photo"] == "")
+			$profiledata["photo"] = proxy_url($r[0]["avatar"]);
+		if ($profiledata["address"] == "")
+			$profiledata["address"] = proxy_parse_html(bbcode($r[0]["location"]));
+		if ($profiledata["about"] == "")
+			$profiledata["about"] = proxy_parse_html(bbcode($r[0]["about"]));
+		if (($profiledata["nickname"] == "") AND ($r[0]["nick"] != ""))
+			$profiledata["nickname"] = $r[0]["nick"];
+	}
+
+	// Check for a repeated message
+	$skip = false;
+	$body = trim($item["body"]);
+
+	// Skip if it isn't a pure repeated messages
+	// Does it start with a share?
+	if (!$skip AND strpos($body, "[share") > 0)
+		$skip = true;
+
+	// Does it end with a share?
+	if (!$skip AND (strlen($body) > (strrpos($body, "[/share]") + 8)))
+		$skip = true;
+
+	if (!$skip) {
+		$attributes = preg_replace("/\[share(.*?)\]\s?(.*?)\s?\[\/share\]\s?/ism","$1",$body);
+		// Skip if there is no shared message in there
+		if ($body == $attributes)
+			$skip = true;
+	}
+
+	if (!$skip) {
+	        $author = "";
+	        preg_match("/author='(.*?)'/ism", $attributes, $matches);
+	        if ($matches[1] != "")
+			$profiledata["name"] = html_entity_decode($matches[1],ENT_QUOTES,'UTF-8');
+
+	        preg_match('/author="(.*?)"/ism', $attributes, $matches);
+	        if ($matches[1] != "")
+			$profiledata["name"] = html_entity_decode($matches[1],ENT_QUOTES,'UTF-8');
+
+	        $profile = "";
+	        preg_match("/profile='(.*?)'/ism", $attributes, $matches);
+	        if ($matches[1] != "")
+			$profiledata["url"] = $matches[1];
+
+	        preg_match('/profile="(.*?)"/ism', $attributes, $matches);
+	        if ($matches[1] != "")
+			$profiledata["url"] = $matches[1];
+
+	        $avatar = "";
+	        preg_match("/avatar='(.*?)'/ism", $attributes, $matches);
+	        if ($matches[1] != "")
+			$profiledata["photo"] = $matches[1];
+
+		preg_match('/avatar="(.*?)"/ism', $attributes, $matches);
+		if ($matches[1] != "")
+			$profiledata["photo"] = $matches[1];
+
+		$profiledata["nickname"] = $profiledata["name"];
+		$profiledata["network"] = GetProfileUsername($profiledata["url"], "", false, true);
+
+		$profiledata["address"] = "";
+		$profiledata["about"] = "";
+
+		// Fetching profile data from unique contacts
+		if ($profiledata["url"] != "") {
+			$r = q("SELECT `avatar`, `nick`, `location`, `about` FROM `unique_contacts` WHERE `url` = '%s'", normalise_link($profiledata["url"]));
+			if (count($r)) {
+				$profiledata["photo"] = proxy_url($r[0]["avatar"]);
+				$profiledata["address"] = proxy_parse_html(bbcode($r[0]["location"]));
+				$profiledata["about"] = proxy_parse_html(bbcode($r[0]["about"]));
+				if ($r[0]["nick"] != "")
+					$profiledata["nickname"] = $r[0]["nick"];
+			}
+		}
+	}
+
+	if (local_user()) {
+		if ($profiledata["network"] == NETWORK_DFRN) {
+			$connect = str_replace("/profile/", "/dfrn_request/", $profiledata["url"])."&addr=".bin2hex($a->get_baseurl()."/profile/".$a->user["nickname"]);
+			$profiledata["remoteconnect"] = $connect;
+		} elseif ($profiledata["network"] == NETWORK_DIASPORA)
+			$profiledata["remoteconnect"] = $a->get_baseurl()."/contacts?add=".GetProfileUsername($profiledata["url"], "", true);
+	} elseif ($profiledata["network"] == NETWORK_DFRN) {
+		$connect = str_replace("/profile/", "/dfrn_request/", $profiledata["url"]);
+		$profiledata["remoteconnect"] = $connect;
+	}
+
+	return($profiledata);
+}
 
 function display_content(&$a, $update = 0) {
 
@@ -44,6 +237,46 @@ function display_content(&$a, $update = 0) {
 	}
 	else {
 		$item_id = (($a->argc > 2) ? $a->argv[2] : 0);
+
+		if ($a->argc == 2) {
+			$nick = "";
+
+			if (local_user()) {
+				$r = q("SELECT `id` FROM `item`
+					WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+						AND `guid` = '%s' AND `uid` = %d", $a->argv[1], local_user());
+				if (count($r)) {
+					$item_id = $r[0]["id"];
+					$nick = $a->user["nickname"];
+				}
+			}
+
+			if ($nick == "") {
+				$r = q("SELECT `user`.`nickname`, `item`.`id` FROM `item` INNER JOIN `user` ON `user`.`uid` = `item`.`uid`
+					WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+						AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
+						AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
+						AND `item`.`private` = 0  AND NOT `user`.`hidewall`
+						AND `item`.`guid` = '%s'", $a->argv[1]);
+					//	AND `item`.`private` = 0 AND `item`.`wall` = 1
+				if (count($r)) {
+					$item_id = $r[0]["id"];
+					$nick = $r[0]["nickname"];
+				}
+			}
+			if ($nick == "") {
+				$r = q("SELECT `item`.`id` FROM `item`
+					WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+						AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
+						AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
+						AND `item`.`private` = 0  AND `item`.`uid` = 0
+						AND `item`.`guid` = '%s'", $a->argv[1]);
+					//	AND `item`.`private` = 0 AND `item`.`wall` = 1
+				if (count($r)) {
+					$item_id = $r[0]["id"];
+				}
+			}
+		}
 	}
 
 	if(! $item_id) {
@@ -99,7 +332,7 @@ function display_content(&$a, $update = 0) {
 		notice( t('Access to this profile has been restricted.') . EOL);
 		return;
 	}
-	
+
 	if ($is_owner) {
 		$celeb = ((($a->user['page-flags'] == PAGE_SOAPBOX) || ($a->user['page-flags'] == PAGE_COMMUNITY)) ? true : false);
 
@@ -120,32 +353,36 @@ function display_content(&$a, $update = 0) {
 
 	$sql_extra = item_permissions_sql($a->profile['uid'],$remote_contact,$groups);
 
+	//	        AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE ( `id` = '%s' OR `uri` = '%s' ))
+
 	if($update) {
 
 		$r = q("SELECT id FROM item WHERE item.uid = %d
-		        AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE ( `id` = '%s' OR `uri` = '%s' ))
+		        AND `item`.`parent` = (SELECT `parent` FROM `item` WHERE (`id` = '%s' OR `uri` = '%s'))
 		        $sql_extra AND unseen = 1",
 		        intval($a->profile['uid']),
 		        dbesc($item_id),
-		        dbesc($item_id) 
+		        dbesc($item_id)
 		);
 
 		if(!$r)
 			return '';
 	}
 
-	$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
+	//	AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE ( `id` = '%s' OR `uri` = '%s' )
+
+	$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,  `item`.`network` AS `item_network`,
 		`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
-		`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`, 
+		`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`,
 		`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
-		FROM `item` LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+		FROM `item` INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+		AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 		WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
 		and `item`.`moderated` = 0
-		AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-		AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE ( `id` = '%s' OR `uri` = '%s' )
-		AND uid = %d )
+		AND `item`.`parent` = (SELECT `parent` FROM `item` WHERE (`id` = '%s' OR `uri` = '%s')
+		AND uid = %d)
 		$sql_extra
-		ORDER BY `parent` DESC, `gravity` ASC, `id` ASC ",
+		ORDER BY `parent` DESC, `gravity` ASC, `id` ASC",
 		intval($a->profile['uid']),
 		dbesc($item_id),
 		dbesc($item_id),
@@ -162,16 +399,17 @@ function display_content(&$a, $update = 0) {
 		);
 		if($r) {
 			$item_uri = $r[0]['uri'];
+			//	AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE `uri` = '%s' AND uid = %d )
 
-			$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
+			$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,  `item`.`network` AS `item_network`,
 				`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
 				`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`, 
 				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
-				FROM `item` LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+				FROM `item` INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
 				and `item`.`moderated` = 0
-				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-				AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE `uri` = '%s' AND uid = %d )
+				AND `item`.`parent` = (SELECT `parent` FROM `item` WHERE `uri` = '%s' AND uid = %d)
 				ORDER BY `parent` DESC, `gravity` ASC, `id` ASC ",
 				intval(local_user()),
 				dbesc($item_uri),
@@ -184,7 +422,7 @@ function display_content(&$a, $update = 0) {
 	if($r) {
 
 		if((local_user()) && (local_user() == $a->profile['uid'])) {
-			q("UPDATE `item` SET `unseen` = 0 
+			q("UPDATE `item` SET `unseen` = 0
 				WHERE `parent` = %d AND `unseen` = 1",
 				intval($r[0]['parent'])
 			);
@@ -203,6 +441,10 @@ function display_content(&$a, $update = 0) {
 		$title = trim(html2plain(bbcode($r[0]["title"], false, false), 0, true));
 		$author_name = $r[0]["author-name"];
 
+		$image = "";
+		if ($image == "")
+			$image = $r[0]["thumb"];
+
 		if ($title == "")
 			$title = $author_name;
 
@@ -216,12 +458,27 @@ function display_content(&$a, $update = 0) {
 		$a->page['htmlhead'] .= '<meta name="fulltitle" content="'.$title.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta name="description" content="'.$description.'" />'."\n";
 
+		// Schema.org microdata
+		$a->page['htmlhead'] .= '<meta itemprop="name" content="'.$title.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta itemprop="description" content="'.$description.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta itemprop="image" content="'.$image.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta itemprop="author" content="'.$author_name.'" />'."\n";
+
+		// Twitter cards
+		$a->page['htmlhead'] .= '<meta name="twitter:card" content="summary" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:title" content="'.$title.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:description" content="'.$description.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:image" content="'.$image.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:url" content="'.$r[0]["plink"].'" />'."\n";
+
+		// Dublin Core
 		$a->page['htmlhead'] .= '<meta name="DC.title" content="'.$title.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta name="DC.description" content="'.$description.'" />'."\n";
 
+		// Open Graph
 		$a->page['htmlhead'] .= '<meta property="og:type" content="website" />'."\n";
 		$a->page['htmlhead'] .= '<meta property="og:title" content="'.$title.'" />'."\n";
-		//<meta property="og:image" content="" />
+		$a->page['htmlhead'] .= '<meta property="og:image" content="'.$image.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta property="og:url" content="'.$r[0]["plink"].'" />'."\n";
 		$a->page['htmlhead'] .= '<meta property="og:description" content="'.$description.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta name="og:article:author" content="'.$author_name.'" />'."\n";
@@ -238,8 +495,8 @@ function display_content(&$a, $update = 0) {
 		if($r[0]['deleted']) {
 			notice( t('Item has been removed.') . EOL );
 		}
-		else {	
-			notice( t('Permission denied.') . EOL ); 
+		else {
+			notice( t('Permission denied.') . EOL );
 		}
 	}
 	else {

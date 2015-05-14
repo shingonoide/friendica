@@ -32,7 +32,7 @@ class Item extends BaseObject {
 
 	public function __construct($data) {
 		$a = $this->get_app();
-		
+
 		$this->data = $data;
 		$this->set_template('wall');
 		$this->toplevel = ($this->get_id() == $this->get_data_value('parent'));
@@ -45,7 +45,7 @@ class Item extends BaseObject {
 				}
 			}
 		}
-		
+
 		$this->writable = ($this->get_data_value('writable') || $this->get_data_value('self'));
 
 		$ssl_state = ((local_user()) ? true : false);
@@ -81,6 +81,8 @@ class Item extends BaseObject {
 	 *      _ false on failure
 	 */
 	public function get_template_data($alike, $dlike, $thread_level=1) {
+		require_once("mod/proxy.php");
+
 		$result = array();
 
 		$a = $this->get_app();
@@ -99,6 +101,7 @@ class Item extends BaseObject {
 		$buttons = '';
 		$dropping = false;
 		$star = false;
+		$ignore = false;
 		$isstarred = "unstarred";
 		$indent = '';
 		$shiny = '';
@@ -196,6 +199,21 @@ class Item extends BaseObject {
 					'classundo' => (($item['starred']) ? "" : "hidden"),
 					'starred' =>  t('starred'),
 				);
+				$r = q("SELECT `ignored` FROM `thread` WHERE `uid` = %d AND `iid` = %d LIMIT 1",
+					intval($item['uid']),
+					intval($item['id'])
+				);
+				if (count($r)) {
+					$ignore = array(
+						'do' => t("ignore thread"),
+						'undo' => t("unignore thread"),
+						'toggle' => t("toggle ignore status"),
+						'classdo' => (($r[0]['ignored']) ? "hidden" : ""),
+						'classundo' => (($r[0]['ignored']) ? "" : "hidden"),
+						'ignored' =>  t('ignored'),
+					);
+				}
+
 				$tagger = '';
 				if(feature_enabled($conv->get_profile_owner(),'commtag')) {
 					$tagger = array(
@@ -268,6 +286,26 @@ class Item extends BaseObject {
 			$owner_name_e = $this->get_owner_name();
 		}
 
+		// Disable features that aren't available in several networks
+		if (($item["item_network"] != "dfrn") AND isset($buttons["dislike"])) {
+			unset($buttons["dislike"]);
+			$tagger = '';
+		}
+
+		if (($item["item_network"] == "feed") AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
+		if (($item["item_network"] == "mail") AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
+		if (($item["item_network"] == "dspr") AND ($indent == 'comment') AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
+		// Facebook can like comments - but it isn't programmed in the connector yet.
+		if (($item["item_network"] == "face") AND ($indent == 'comment') AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
+
 		$tmp_item = array(
 			'template' => $this->get_template(),
 
@@ -284,6 +322,7 @@ class Item extends BaseObject {
 			'body' => $body_e,
 			'text' => $text_e,
 			'id' => $this->get_id(),
+			'guid' => $item['guid'],
 			'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 			'olinktitle' => sprintf( t('View %s\'s profile @ %s'), $this->get_owner_name(), ((strlen($item['owner-link'])) ? $item['owner-link'] : $item['url'])),
 			'to' => t('to'),
@@ -293,23 +332,26 @@ class Item extends BaseObject {
 			'profile_url' => $profile_link,
 			'item_photo_menu' => item_photo_menu($item),
 			'name' => $name_e,
-			'thumb' => $profile_avatar,
+			'thumb' => proxy_url($profile_avatar),
 			'osparkle' => $osparkle,
 			'sparkle' => $sparkle,
 			'title' => $title_e,
 			'localtime' => datetime_convert('UTC', date_default_timezone_get(), $item['created'], 'r'),
 			'ago' => (($item['app']) ? sprintf( t('%s from %s'),relative_date($item['created']),$item['app']) : relative_date($item['created'])),
+			'app' => $item['app'],
+			'created' => relative_date($item['created']),
 			'lock' => $lock,
 			'location' => $location_e,
 			'indent' => $indent,
 			'shiny' => $shiny,
 			'owner_url' => $this->get_owner_url(),
-			'owner_photo' => $this->get_owner_photo(),
+			'owner_photo' => proxy_url($this->get_owner_photo()),
 			'owner_name' => $owner_name_e,
 			'plink' => get_plink($item),
 			'edpost'    => ((feature_enabled($conv->get_profile_owner(),'edit_posts')) ? $edpost : ''),
 			'isstarred' => $isstarred,
 			'star'      => ((feature_enabled($conv->get_profile_owner(),'star_posts')) ? $star : ''),
+			'ignore'      => ((feature_enabled($conv->get_profile_owner(),'ignore_posts')) ? $ignore : ''),
 			'tagger'	=> $tagger,
 			'filer'     => ((feature_enabled($conv->get_profile_owner(),'filing')) ? $filer : ''),
 			'drop' => $drop,
@@ -322,7 +364,9 @@ class Item extends BaseObject {
 			'wait' => t('Please wait'),
 			'thread_level' => $thread_level,
                         'postopts' => $langstr,
-                        'edited' => $edited
+                        'edited' => $edited,
+			'network' => $item["item_network"],
+			'network_name' => network_to_name($item['item_network']),
 		);
 
 		$arr = array('item' => $item, 'output' => $tmp_item);
@@ -372,7 +416,7 @@ class Item extends BaseObject {
 
 		return $result;
 	}
-	
+
 	public function get_id() {
 		return $this->get_data_value('id');
 	}
@@ -403,7 +447,7 @@ class Item extends BaseObject {
 		if(activity_match($item->get_data_value('verb'),ACTIVITY_LIKE) || activity_match($item->get_data_value('verb'),ACTIVITY_DISLIKE)) {
 			return false;
 		}
-		
+
 		$item->set_parent($this);
 		$this->children[] = $item;
 		return end($this->children);
@@ -662,11 +706,10 @@ class Item extends BaseObject {
 		$a = $this->get_app();
 		$conv = $this->get_conversation();
 		$this->wall_to_wall = false;
-		
-		if($this->is_toplevel()) {
-			if( (! $this->get_data_value('self')) && ($conv->get_mode() !== 'profile')) {
-				if($this->get_data_value('wall')) {
 
+		if($this->is_toplevel()) {
+			if($conv->get_mode() !== 'profile') {
+				if($this->get_data_value('wall') AND !$this->get_data_value('self')) {
 					// On the network page, I am the owner. On the display page it will be the profile owner.
 					// This will have been stored in $a->page_contact by our calling page.
 					// Put this person as the wall owner of the wall-to-wall notice.
@@ -681,6 +724,7 @@ class Item extends BaseObject {
 					$owner_linkmatch = (($this->get_data_value('owner-link')) && link_compare($this->get_data_value('owner-link'),$this->get_data_value('author-link')));
 					$alias_linkmatch = (($this->get_data_value('alias')) && link_compare($this->get_data_value('alias'),$this->get_data_value('author-link')));
 					$owner_namematch = (($this->get_data_value('owner-name')) && $this->get_data_value('owner-name') == $this->get_data_value('author-name'));
+
 					if((! $owner_linkmatch) && (! $alias_linkmatch) && (! $owner_namematch)) {
 
 						// The author url doesn't match the owner (typically the contact)
@@ -691,7 +735,7 @@ class Item extends BaseObject {
 						// well that it's the same Bob Smith. 
 
 						// But it could be somebody else with the same name. It just isn't highly likely. 
-						
+
 
 						$this->owner_photo = $this->get_data_value('owner-avatar');
 						$this->owner_name = $this->get_data_value('owner-name');

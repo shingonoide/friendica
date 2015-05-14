@@ -9,7 +9,7 @@ function share_init(&$a) {
 		killme();
 
 	$r = q("SELECT item.*, contact.network FROM `item` 
-		left join contact on `item`.`contact-id` = `contact`.`id` 
+		inner join contact on `item`.`contact-id` = `contact`.`id` 
 		WHERE `item`.`id` = %d AND `item`.`uid` = %d LIMIT 1",
 
 		intval($post_id),
@@ -18,7 +18,7 @@ function share_init(&$a) {
 	if(! count($r) || ($r[0]['private'] == 1))
 		killme();
 
-	if (intval(get_config('system','new_share'))) {
+	if (!intval(get_config('system','old_share'))) {
 		if (strpos($r[0]['body'], "[/share]") !== false) {
 			$pos = strpos($r[0]['body'], "[share");
 			$o = substr($r[0]['body'], $pos);

@@ -6,11 +6,13 @@ Frequently Asked Questions - FAQ
 User
 
 * **[Why do I getting warnings about certificates?](help/FAQ#ssl)**
+* **[How can I upload images, files, links, videos and sound files to posts?](help/FAQ#upload)**
 * **[Is it possible to have different avatars per profile?](help/FAQ#avatars)**
 * **[What is the difference between blocked|ignored|archived|hidden contacts?](help/FAQ#contacts)**
 * **[What happens when an account is removed? Is it truly deleted?](help/FAQ#removed)**
 * **[Can I subscribe to a hashtag?](help/FAQ#hashtag)**
 * **[How to create a RSS feed of the stream?](help/FAQ#rss)**
+* **[Are there any clients for friendica I can use?](help/FAQ#clients)**
 * **[Where I can find help?](help/FAQ#help)**
 
 Admins
@@ -38,13 +40,31 @@ Sometimes you get a browser warning about a missing certificate. These warnings 
 If you dont have a SSL cert yet, there are three ways to get one: buy one, get a free one (eg. via StartSSL) or create your own (not recommended). [You can find more information about setting up SSL and why it's a bad idea to use self-signed SSL here.](help/SSL) 
 
 Be aware that a browser warning about security issues is something that can make new users feel insecure about the whole friendica project. 
-Because of this, Friendica Red will only accept SSL certs signed by a recognized CA and doesn't connect to servers without these kind of SSL. Despite of the negative aspects of SSL, this is a necessary solution until there is an established alternative for this technique.
 
 Also you can have problems with the connection to diaspora because some pods require a SSL-certificated connection. 
 
 If you are just using friendica for a specified group of people on a single server without a connection to the rest of the friendica network, there is no need to use SSL. If you exclusively use public posts, there is also no need for it. 
 
 If you havn't set up a server yet, it's wise to compare the different provider and their SSL conditions. Some allow the usage of free certificates or give you the access to their certificate for free. Other ones only allow bought certificates from themselves or other providers.
+
+<a name="upload"></a>
+
+**How can I upload images, files, links, videos and sound files to posts?**
+
+You can upload images from your computer by using the [editor](help/Text_editor). An overview of all uploaded images is listed at <i>yourpage.com/photos/profilename</i>. There you could also upload images directly and choose, if your contacts shall receive a message about this upload.
+
+Generally, you could attach every kind of file to a post. This is possible by using the "paper-clip"-symbol at the editor. These files will be linked to your post and can be downloaded by your contacts. But it's not possible to get a preview for these ones. Because of this, this upload method is recommended for office or zipped files. 
+If you want to use Dropbox, owncloud at your own server or any other [filehoster](http://en.wikipedia.org/wiki/Comparison_of_file_hosting_services), you'll have use the "link"-button (chain-symbol). 
+
+When you're adding URLs of other webpages with the "link"-button, Friendica tries to create a small preview. If this doesn't work, try to add the link by typing: [url=http://example.com]<i>self-chosen name</i>[/url].
+
+You can also add video and audio files to posts. But instead of a direct upload you have to use one of the following methods:
+
+1. Add the video or audio link of a hoster (Youtube, Vimeo, Soundcloud and everyone else with oembed/opengraph-support). Videos will be shown with a preview image you can click on to start it. SoundCloud directly inserts a player to your post. 
+
+2. If you have an own server, you can upload your multimedia files via FTP and insert the URL. Your video or sound file will be shown with their own player at your post. 
+
+Friendica is using HTML5 for embedding content. Therefore, the supported files are depending on your browser and operating system (OS). Some filetypes are WebM, MP4, MP3 and OGG. There are more examples at wikipedia ([video](http://en.wikipedia.org/wiki/HTML5_video), [audio](http://en.wikipedia.org/wiki/HTML5_audio)).
 
 <a name="avatars"></a>
 
@@ -110,13 +130,32 @@ RSS feed of the conversations at your site
 	
 	https://helpers.pyxis.uberspace.de/dfrn_poll/helpers/converse
 
+<a name="clients"></a>
+
+**Are there any clients for friendica I can use?**
+
+Friendica is using a [Twitter/StatusNet compatible API](help/api), which means you can use any Twitter/StatusNet/GNU Social client for your plattform as long as you can change the API path in its settings. Here is a list of known working clients
+
+* Android
+  * Friendica Client for Android
+  * AndStatus
+  * Twidere
+  * Mustard and Mustard-Mod
+* Linux
+  * Hotot
+  * Choqok
+* MacOS X
+  * Hotot
+* Windows
+  * Hotot
+
+Depending on the features of the client you might encounter some glitches in usability, like being limited in the length of your postings to 140 characters and having no access to the [permission settings](help/Groups-and-Privacy).
+
 <a name="help"></a>
 
 **Where I can find help?**
 
 If you have problems with your Friendica page, you can ask the community at the [Friendica Support Group](https://helpers.pyxis.uberspace.de/profile/helpers). If you can't use your default profile you can either use a test account [test server](http://friendica.com/node/31) respectively an account at a public site [list](http://dir.friendica.com/siteinfo) or you can use the Librelist mailing list. If you want to use the mailing list, please just send a mail to friendica AT librelist DOT com.
-
-If you are using Friendica Red, you will also find help at this forum: [Friendica Red Development](https://myfriendica.net/profile/friendicared).
 
 If you are a theme developer, you will find help at this forum: [Friendica Theme Developers](https://friendica.eu/profile/ftdevs).
 
@@ -127,13 +166,13 @@ Admin
 
 **Can I configure multiple domains with the same code instance?**
 
-You can do that. What you can't do is point two different domains at the same database. As long as .htconfig.php exists to keep it from trying to do an install, you can keep the real config in include/$hostname/.htconfig.php All of the cache and lock stuff can be configured per instance.
+This function is not supported anymore starting from Friendica 3.3
 
 <a name="sources"></a>
 
 **Where can I find the source code of friendica, addons and themes?**
 
-You can find the main respository [here](https://github.com/friendica/friendica). There you will always find the current stable version of friendica. The source files of Friendica Red are [here](https://github.com/friendica/red).
+You can find the main respository [here](https://github.com/friendica/friendica). There you will always find the current stable version of friendica.
 
 Addons are listed at [this page](https://github.com/friendica/friendica-addons).
 

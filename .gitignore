@@ -1,6 +1,7 @@
 sftp-config.json
 favicon.*
 .htconfig.php
+.htpreconfig.php
 \#*
 include/jquery-1.4.2.min.js
 *.log
@@ -34,4 +35,11 @@ report/
 #ignore cache folders
 /privacy_image_cache/
 /photo/
+/proxy/
 nbproject
+
+#ignore vagrant dir
+.vagrant/
+
+#ignore local folder
+/local/

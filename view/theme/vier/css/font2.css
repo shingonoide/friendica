@@ -30,13 +30,13 @@
 }
 
 .icon.s10 {
-  font-size: 1em;
+  font-size: 0.7em;
 }
 .icon.s16 {
   font-size: 1.2em;
 }
 .icon.s22 {
-  font-size: 1.37em;
+  font-size: 1.2em;
 }
 .icon.s48 {
   font-size: 2em;
@@ -51,7 +51,7 @@
   display: inline-block;
   text-decoration: inherit;
   vertical-align: top;
-  font-size: 1.3333333333333333em;
+  font-size: 1.2em;
 }
 a .icon {
   display: inline-block;
@@ -60,7 +60,8 @@ a .icon {
 /* makes the font 33% larger relative to the icon container */
 .icon-large:before {
   vertical-align: top;
-  font-size: 1.3333333333333333em;
+/*  font-size: 1.3333333333333333em; */
+  font-size: 1.2em;
 }
 .btn .icon {
   /* keeps button heights with and without icons the same */
@@ -139,7 +140,8 @@ li.icon.icon-large:before {
 .icon-bookmark:before             { content: "\f02e"; }
 .icon-print:before                { content: "\f02f"; }
 
-.icon.camera:before               { content: "\f030"; }
+.icon-camera:before               { content: "\f030"; }
+.icon.camera:before               { content: "\f03e"; }
 .icon-font:before                 { content: "\f031"; }
 .icon-bold:before                 { content: "\f032"; }
 .icon-italic:before               { content: "\f033"; }
@@ -197,7 +199,7 @@ li.icon.icon-large:before {
 .icon.add:before                  { content: "\f067"; }
 .icon-minus:before                { content: "\f068"; }
 .icon-asterisk:before             { content: "\f069"; }
-.icon.notify:before               { content: "\f06a"; }
+.icon.exclamation:before          { content: "\f06a"; }
 .icon-gift:before                 { content: "\f06b"; }
 .icon-leaf:before                 { content: "\f06c"; }
 .icon-fire:before                 { content: "\f06d"; }
@@ -251,9 +253,13 @@ li.icon.icon-large:before {
 .icon-credit-card:before          { content: "\f09d"; }
 .icon-rss:before                  { content: "\f09e"; }
 
+.icon-bell-slash:before           { content: "\f1f6"; }
+.icon-bell-slash-o:before         { content: "\f1f7"; }
+
 .icon-hdd:before                  { content: "\f0a0"; }
 .icon-bullhorn:before             { content: "\f0a1"; }
-.icon-bell:before                 { content: "\f0a2"; }
+.icon.notify:before               { content: "\f0a2"; }
+.icon.notify.show:before          { content: "\f0f3"; }
 .icon-certificate:before          { content: "\f0a3"; }
 .icon-hand-right:before           { content: "\f0a4"; }
 .icon-hand-left:before            { content: "\f0a5"; }
@@ -314,6 +320,7 @@ li.icon.icon-large:before {
 .icon-sitemap:before              { content: "\f0e8"; }
 .icon-umbrella:before             { content: "\f0e9"; }
 .icon-paste:before                { content: "\f0ea"; }
+.icon-sliders:before              { content: "\f1de"; }
 
 .icon-user-md:before              { content: "\f200"; }
 

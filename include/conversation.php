@@ -203,12 +203,11 @@ function localize_item(&$item){
 
 		// we can't have a translation string with three positions but no distinguishable text
 		// So here is the translate string.
-
 		$txt = t('%1$s poked %2$s');
-
+		
 		// now translate the verb
-
-		$txt = str_replace( t('poked'), t($verb), $txt);
+		$poked_t = trim(sprintf($txt, "",""));
+		$txt = str_replace( $poked_t, t($verb), $txt);
 
 		// then do the sprintf on the translation string
 
@@ -370,6 +369,7 @@ if(!function_exists('conversation')) {
 function conversation(&$a, $items, $mode, $update, $preview = false) {
 
 	require_once('include/bbcode.php');
+	require_once('mod/proxy.php');
 
 	$ssl_state = ((local_user()) ? true : false);
 
@@ -504,6 +504,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 			$tpl = 'search_item.tpl';
 
 			foreach($items as $item) {
+
 				if($arr_blocked) {
 					$blocked = false;
 					foreach($arr_blocked as $b) {
@@ -557,13 +558,13 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 						$tag["url"] = $searchpath.strtolower($tag["term"]);
 
 					if ($tag["type"] == TERM_HASHTAG) {
-						$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+						$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 						$prefix = "#";
 					} elseif ($tag["type"] == TERM_MENTION) {
-						$mentions[] = "@<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+						$mentions[] = "@<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 						$prefix = "@";
 					}
-					$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+					$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 				}
 
 				/*foreach(explode(',',$item['tag']) as $tag){
@@ -619,7 +620,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				$likebuttons = false;
 				$shareable = false;
 
-				$body = prepare_body($item,true);
+				$body = prepare_body($item,true, $preview);
 
 
 				list($categories, $folders) = get_cats_and_terms($item);
@@ -648,13 +649,14 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				$tmp_item = array(
 					'template' => $tpl,
 					'id' => (($preview) ? 'P0' : $item['item_id']),
+					'network' => $item['item_network'],
 					'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 					'profile_url' => $profile_link,
 					'item_photo_menu' => item_photo_menu($item),
 					'name' => $profile_name_e,
 					'sparkle' => $sparkle,
 					'lock' => $lock,
-					'thumb' => $profile_avatar,
+					'thumb' => proxy_url($profile_avatar),
 					'title' => $item['title_e'],
 					'body' => $body_e,
 					'tags' => $tags_e,
@@ -673,7 +675,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 					'indent' => '',
 					'owner_name' => $owner_name_e,
 					'owner_url' => $owner_url,
-					'owner_photo' => $owner_photo,
+					'owner_photo' => proxy_url($owner_photo),
 					'plink' => get_plink($item),
 					'edpost' => false,
 					'isstarred' => $isstarred,
@@ -683,7 +685,8 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 					'like' => '',
 					'dislike' => '',
 					'comment' => '',
-					'conv' => (($preview) ? '' : array('href'=> $a->get_baseurl($ssl_state) . '/display/' . $nickname . '/' . $item['id'], 'title'=> t('View in context'))),
+					//'conv' => (($preview) ? '' : array('href'=> $a->get_baseurl($ssl_state) . '/display/' . $nickname . '/' . $item['id'], 'title'=> t('View in context'))),
+					'conv' => (($preview) ? '' : array('href'=> $a->get_baseurl($ssl_state) . '/display/'.$item['guid'], 'title'=> t('View in context'))),
 					'previewing' => $previewing,
 					'wait' => t('Please wait'),
 					'thread_level' => 1,
@@ -693,6 +696,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				call_hooks('display_item', $arr);
 
 				$threads[$threadsid]['id'] = $item['item_id'];
+				$threads[$threadsid]['network'] = $item['item_network'];
 				$threads[$threadsid]['items'] = array($arr['output']);
 
 			}
@@ -1040,13 +1044,18 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		}
 	}
 
-	if($mail_enabled) {
-		$selected = (($pubmail_enabled) ? ' checked="checked" ' : '');
-		$jotnets .= '<div class="profile-jot-net"><input type="checkbox" name="pubmail_enable"' . $selected . ' value="1" /> ' . t("Post to Email") . '</div>';
-	}
+	if (!$a->user['hidewall']) {
+		if($mail_enabled) {
+			$selected = (($pubmail_enabled) ? ' checked="checked" ' : '');
+			$jotnets .= '<div class="profile-jot-net"><input type="checkbox" name="pubmail_enable"' . $selected . ' value="1" /> ' . t("Post to Email") . '</div>';
+		}
+
+		call_hooks('jot_networks', $jotnets);
+	} else
+		$jotnets .= sprintf(t('Connectors disabled, since "%s" is enabled.'),
+				    t('Hide your profile details from unknown viewers?'));
 
 	call_hooks('jot_tool', $jotplugins);
-	call_hooks('jot_networks', $jotnets);
 
 	if($notes_cid)
 		$jotnets .= '<input type="hidden" name="contact_allow[]" value="' . $notes_cid .'" />';
@@ -1092,16 +1101,16 @@ function status_editor($a,$x, $notes_cid = 0, $popup=false) {
 		'$shortsetloc' => t('set location'),
 		'$noloc' => t('Clear browser location'),
 		'$shortnoloc' => t('clear location'),
-		'$title' => "",
+		'$title' => $x['title'],
 		'$placeholdertitle' => t('Set title'),
-		'$category' => "",
+		'$category' => $x['category'],
 		'$placeholdercategory' => (feature_enabled(local_user(),'categories') ? t('Categories (comma-separated list)') : ''),
 		'$wait' => t('Please wait'),
 		'$permset' => t('Permission settings'),
 		'$shortpermset' => t('permissions'),
 		'$ptyp' => (($notes_cid) ? 'note' : 'wall'),
-		'$content' => '',
-		'$post_id' => '',
+		'$content' => $x['content'],
+		'$post_id' => $x['post_id'],
 		'$baseurl' => $a->get_baseurl(true),
 		'$defloc' => $x['default_location'],
 		'$visitor' => $x['visitor'],

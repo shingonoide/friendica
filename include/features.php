@@ -30,6 +30,7 @@ function get_features() {
 			t('Post Composition Features'),
 			array('richtext',       t('Richtext Editor'),			t('Enable richtext editor')),
 			array('preview',        t('Post Preview'),				t('Allow previewing posts and comments before publishing them')),
+			array('aclautomention',	t('Auto-mention Forums'),		t('Add/remove mention when a fourm page is selected/deselected in ACL window.')),
 		),
 
 		// Network sidebar widgets
@@ -59,6 +60,7 @@ function get_features() {
 			array('filing',         t('Saved Folders'),				t('Ability to file posts under folders')),
 			array('dislike',        t('Dislike Posts'),				t('Ability to dislike posts/comments')),
 			array('star_posts',     t('Star Posts'),				t('Ability to mark special posts with a star indicator')),
+			array('ignore_posts',   t('Mute Post Notifications'),			t('Ability to mute notifications for a thread')),
 		),
 	);
 

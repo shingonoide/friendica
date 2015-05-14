@@ -8,7 +8,7 @@ function expire_run(&$argv, &$argc){
 	if(is_null($a)) {
 		$a = new App;
 	}
-  
+
 	if(is_null($db)) {
 	    @include(".htconfig.php");
     	require_once("include/dba.php");
@@ -38,7 +38,7 @@ function expire_run(&$argv, &$argc){
 		q("optimize table item");
 
 	logger('expire: start');
-	
+
 	$r = q("SELECT `uid`,`username`,`expire` FROM `user` WHERE `expire` != 0");
 	if(count($r)) {
 		foreach($r as $rr) {
@@ -47,10 +47,14 @@ function expire_run(&$argv, &$argc){
 		}
 	}
 
+	load_hooks();
+
+	call_hooks('expire');
+
 	return;
 }
 
 if (array_search(__file__,get_included_files())===0){
-  expire_run($argv,$argc);
+  expire_run($_SERVER["argv"],$_SERVER["argc"]);
   killme();
 }

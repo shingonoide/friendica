@@ -55,7 +55,7 @@ function nav_info(&$a) {
 	 */
 
 	$myident = ((is_array($a->user) && isset($a->user['nickname'])) ? $a->user['nickname'] . '@' : '');
-		
+
 	$sitelocation = $myident . substr($a->get_baseurl($ssl_state),strpos($a->get_baseurl($ssl_state),'//') + 2 );
 
 
@@ -76,8 +76,9 @@ function nav_info(&$a) {
 		$nav['usermenu'][] = Array('profile/' . $a->user['nickname'], t('Status'), "", t('Your posts and conversations'));
 		$nav['usermenu'][] = Array('profile/' . $a->user['nickname']. '?tab=profile', t('Profile'), "", t('Your profile page'));
 		$nav['usermenu'][] = Array('photos/' . $a->user['nickname'], t('Photos'), "", t('Your photos'));
+		$nav['usermenu'][] = Array('videos/' . $a->user['nickname'], t('Videos'), "", t('Your videos'));
 		$nav['usermenu'][] = Array('events/', t('Events'), "", t('Your events'));
-		$nav['usermenu'][] = Array('notes/', t('Personal notes'), "", t('Your personal photos'));
+		$nav['usermenu'][] = Array('notes/', t('Personal notes'), "", t('Your personal notes'));
 
 		// user info
 		$r = q("SELECT micro FROM contact WHERE uid=%d AND self=1", intval($a->user['uid']));
@@ -85,7 +86,7 @@ function nav_info(&$a) {
 			'icon' => (count($r) ? $a->get_cached_avatar_image($r[0]['micro']) : $a->get_baseurl($ssl_state)."/images/person-48.jpg"),
 			'name' => $a->user['username'],
 		);
-		
+
 	}
 	else {
 		$nav['login'] = Array('login',t('Login'), ($a->module == 'login'?'selected':''), t('Sign in'));
@@ -100,7 +101,7 @@ function nav_info(&$a) {
 	if(! $homelink)
 		$homelink = ((x($_SESSION,'visitor_home')) ? $_SESSION['visitor_home'] : '');
 
-	if(($a->module != 'home') && (! (local_user()))) 
+	if(($a->module != 'home') && (! (local_user())))
 		$nav['home'] = array($homelink, t('Home'), "", t('Home Page'));
 
 
@@ -124,10 +125,14 @@ function nav_info(&$a) {
 		if(strlen($gdir))
 			$gdirpath = $gdir;
 	}
-	elseif(! get_config('system','no_community_page'))
+	elseif(get_config('system','community_page_style') == CP_USERS_ON_SERVER)
 		$nav['community'] = array('community', t('Community'), "", t('Conversations on this site'));
+	elseif(get_config('system','community_page_style') == CP_GLOBAL_COMMUNITY)
+		$nav['community'] = array('community', t('Community'), "", t('Conversations on the network'));
 
-	$nav['directory'] = array($gdirpath, t('Directory'), "", t('People directory')); 
+	$nav['directory'] = array($gdirpath, t('Directory'), "", t('People directory'));
+
+	$nav['about'] = Array('friendica', t('Information'), "", t('Information about this friendica instance'));
 
 	/**
 	 *
@@ -145,7 +150,7 @@ function nav_info(&$a) {
 
 		/* only show friend requests for normal pages. Other page types have automatic friendship. */
 
-		if($_SESSION['page_flags'] == PAGE_NORMAL || $_SESSION['page_flags'] == PAGE_PRVGROUP) {
+		if($_SESSION['page_flags'] == PAGE_NORMAL || $_SESSION['page_flags'] == PAGE_SOAPBOX || $_SESSION['page_flags'] == PAGE_PRVGROUP) {
 			$nav['introductions'] = array('notifications/intros',	t('Introductions'), "", t('Friend Requests'));
 			$nav['notifications'] = array('notifications',	t('Notifications'), "", t('Notifications'));
 			$nav['notifications']['all']=array('notifications/system', t('See all notifications'), "", "");
@@ -165,6 +170,7 @@ function nav_info(&$a) {
 		$nav['delegations'] = Array('delegate', t('Delegations'), "", t('Delegate Page Management'));
 
 		$nav['settings'] = array('settings', t('Settings'),"", t('Account settings'));
+
 		if(feature_enabled(local_user(),'multi_profiles'))
 			$nav['profiles'] = array('profiles', t('Profiles'),"", t('Manage/Edit Profiles'));
 

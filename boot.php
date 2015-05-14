@@ -11,10 +11,14 @@ require_once('include/cache.php');
 require_once('library/Mobile_Detect/Mobile_Detect.php');
 require_once('include/features.php');
 
+require_once('update.php');
+require_once('include/dbstructure.php');
+
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.2' );
+define ( 'FRIENDICA_CODENAME',     'Lily of the valley');
+define ( 'FRIENDICA_VERSION',      '3.4.0' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
-define ( 'DB_UPDATE_VERSION',      1163      );
+define ( 'DB_UPDATE_VERSION',      1182      );
 define ( 'EOL',                    "<br />\r\n"     );
 define ( 'ATOM_TIME',              'Y-m-d\TH:i:s\Z' );
 
@@ -123,6 +127,11 @@ define ( 'PAGE_FREELOVE',          3 );
 define ( 'PAGE_BLOG',              4 );
 define ( 'PAGE_PRVGROUP',          5 );
 
+// Type of the community page
+define ( 'CP_NO_COMMUNITY_PAGE',   -1 );
+define ( 'CP_USERS_ON_SERVER',     0 );
+define ( 'CP_GLOBAL_COMMUNITY',    1 );
+
 /**
  * Network and protocol family types
  */
@@ -141,6 +150,9 @@ define ( 'NETWORK_MYSPACE',          'mysp');    // MySpace
 define ( 'NETWORK_GPLUS',            'goog');    // Google+
 define ( 'NETWORK_PUMPIO',           'pump');    // pump.io
 define ( 'NETWORK_TWITTER',          'twit');    // Twitter
+define ( 'NETWORK_DIASPORA2',        'dspc');    // Diaspora connector
+define ( 'NETWORK_STATUSNET',        'stac');    // Statusnet connector
+define ( 'NETWORK_APPNET',           'apdn');    // app.net
 
 define ( 'NETWORK_PHANTOM',          'unkn');    // Place holder
 
@@ -165,6 +177,9 @@ $netgroup_ids = array(
 	NETWORK_GPLUS    => (-12),
 	NETWORK_PUMPIO   => (-13),
 	NETWORK_TWITTER  => (-14),
+	NETWORK_DIASPORA2 => (-15),
+	NETWORK_STATUSNET => (-16),
+	NETWORK_APPNET => (-17),
 
 	NETWORK_PHANTOM  => (-127),
 );
@@ -197,6 +212,7 @@ define ( 'NOTIFY_PROFILE',  0x0040 );
 define ( 'NOTIFY_TAGSELF',  0x0080 );
 define ( 'NOTIFY_TAGSHARE', 0x0100 );
 define ( 'NOTIFY_POKE',     0x0200 );
+define ( 'NOTIFY_SHARE',    0x0400 );
 
 define ( 'NOTIFY_SYSTEM',   0x8000 );
 
@@ -261,10 +277,13 @@ define ( 'ACTIVITY_FAVORITE',    NAMESPACE_ACTIVITY_SCHEMA . 'favorite' );
 define ( 'ACTIVITY_POKE',        NAMESPACE_ZOT . '/activity/poke' );
 define ( 'ACTIVITY_MOOD',        NAMESPACE_ZOT . '/activity/mood' );
 
+define ( 'ACTIVITY_OBJ_BOOKMARK', NAMESPACE_ACTIVITY_SCHEMA . 'bookmark' );
 define ( 'ACTIVITY_OBJ_COMMENT', NAMESPACE_ACTIVITY_SCHEMA . 'comment' );
 define ( 'ACTIVITY_OBJ_NOTE',    NAMESPACE_ACTIVITY_SCHEMA . 'note' );
 define ( 'ACTIVITY_OBJ_PERSON',  NAMESPACE_ACTIVITY_SCHEMA . 'person' );
+define ( 'ACTIVITY_OBJ_IMAGE',   NAMESPACE_ACTIVITY_SCHEMA . 'image' );
 define ( 'ACTIVITY_OBJ_PHOTO',   NAMESPACE_ACTIVITY_SCHEMA . 'photo' );
+define ( 'ACTIVITY_OBJ_VIDEO',   NAMESPACE_ACTIVITY_SCHEMA . 'video' );
 define ( 'ACTIVITY_OBJ_P_PHOTO', NAMESPACE_ACTIVITY_SCHEMA . 'profile-photo' );
 define ( 'ACTIVITY_OBJ_ALBUM',   NAMESPACE_ACTIVITY_SCHEMA . 'photo-album' );
 define ( 'ACTIVITY_OBJ_EVENT',   NAMESPACE_ACTIVITY_SCHEMA . 'event' );
@@ -395,6 +414,9 @@ if(! class_exists('App')) {
 		// array of instanced template engines ('name'=>'instance')
 		public $template_engine_instance = array();
 
+		// Used for reducing load to the ostatus completion
+		public $last_ostatus_conversation_url;
+
 		private $ldelim = array(
 			'internal' => '',
 			'smarty3' => '{{'
@@ -418,7 +440,9 @@ if(! class_exists('App')) {
 
 		function __construct() {
 
-			global $default_timezone, $argv, $argc;
+			global $default_timezone;
+
+			$hostname = "";
 
 			if (file_exists(".htpreconfig.php"))
 				@include(".htpreconfig.php");
@@ -485,31 +509,45 @@ if(! class_exists('App')) {
 			if ($hostname != "")
 				$this->hostname = $hostname;
 
-			if (is_array($argv) && $argc>1 && substr(end($argv), 0, 4)=="http" ) {
-				$this->set_baseurl(array_pop($argv) );
-				$argc --;
+			if (is_array($_SERVER["argv"]) && $_SERVER["argc"]>1 && substr(end($_SERVER["argv"]), 0, 4)=="http" ) {
+				$this->set_baseurl(array_pop($_SERVER["argv"]) );
+				$_SERVER["argc"] --;
 			}
 
-			set_include_path("include/$this->hostname" . PATH_SEPARATOR . get_include_path());
+			#set_include_path("include/$this->hostname" . PATH_SEPARATOR . get_include_path());
 
-			if((x($_SERVER,'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'],0,2) === "q=") {
+			if((x($_SERVER,'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'],0,9) === "pagename=") {
+				$this->query_string = substr($_SERVER['QUERY_STRING'],9);
+				// removing trailing / - maybe a nginx problem
+				if (substr($this->query_string, 0, 1) == "/")
+					$this->query_string = substr($this->query_string, 1);
+			} elseif((x($_SERVER,'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'],0,2) === "q=") {
 				$this->query_string = substr($_SERVER['QUERY_STRING'],2);
 				// removing trailing / - maybe a nginx problem
 				if (substr($this->query_string, 0, 1) == "/")
 					$this->query_string = substr($this->query_string, 1);
 			}
-			if(x($_GET,'q'))
+
+			if (x($_GET,'pagename'))
+				$this->cmd = trim($_GET['pagename'],'/\\');
+			elseif (x($_GET,'q'))
 				$this->cmd = trim($_GET['q'],'/\\');
+
+
+                        // fix query_string
+                        $this->query_string = str_replace($this->cmd."&",$this->cmd."?", $this->query_string);
+
 
 			// unix style "homedir"
 
 			if(substr($this->cmd,0,1) === '~')
-				$this->cmd = 'profile/' . substr($this->cmd,1);
+                        	$this->cmd = 'profile/' . substr($this->cmd,1);
 
 			// Diaspora style profile url
 
 			if(substr($this->cmd,0,2) === 'u/')
 				$this->cmd = 'profile/' . substr($this->cmd,2);
+
 
 			/**
 			 *
@@ -583,6 +621,10 @@ if(! class_exists('App')) {
 			return($basepath);
 		}
 
+		function get_scheme() {
+			return($this->scheme);
+		}
+
 		function get_baseurl($ssl = false) {
 
 			$scheme = $this->scheme;
@@ -602,6 +644,9 @@ if(! class_exists('App')) {
 				}
 			}
 
+			if (get_config('config','hostname') != "")
+				$this->hostname = get_config('config','hostname');
+
 			$this->baseurl = $scheme . "://" . $this->hostname . ((isset($this->path) && strlen($this->path)) ? '/' . $this->path : '' );
 			return $this->baseurl;
 		}
@@ -614,16 +659,28 @@ if(! class_exists('App')) {
 			if($parsed) {
 				$this->scheme = $parsed['scheme'];
 
-				$this->hostname = $parsed['host'];
+				$hostname = $parsed['host'];
 				if(x($parsed,'port'))
-					$this->hostname .= ':' . $parsed['port'];
+					$hostname .= ':' . $parsed['port'];
 				if(x($parsed,'path'))
 					$this->path = trim($parsed['path'],'\\/');
+
+				if (file_exists(".htpreconfig.php"))
+					@include(".htpreconfig.php");
+
+				if (get_config('config','hostname') != "")
+					$this->hostname = get_config('config','hostname');
+
+				if (!isset($this->hostname) OR ($this->hostname == ""))
+					$this->hostname = $hostname;
 			}
 
 		}
 
 		function get_hostname() {
+			if (get_config('config','hostname') != "")
+				$this->hostname = get_config('config','hostname');
+
 			return $this->hostname;
 		}
 
@@ -676,6 +733,14 @@ if(! class_exists('App')) {
 			else
 				$stylesheet = '$stylesheet';
 
+			$shortcut_icon = get_config("system", "shortcut_icon");
+			if ($shortcut_icon == "")
+				$shortcut_icon = $this->get_baseurl()."/images/friendica-32.png";
+
+			$touch_icon = get_config("system", "touch_icon");
+			if ($touch_icon == "")
+				$touch_icon = $this->get_baseurl()."/images/friendica-128.png";
+
 			$tpl = get_markup_template('head.tpl');
 			$this->page['htmlhead'] = replace_macros($tpl,array(
 				'$baseurl' => $this->get_baseurl(), // FIXME for z_path!!!!
@@ -686,6 +751,8 @@ if(! class_exists('App')) {
 				'$showmore' => t('show more'),
 				'$showfewer' => t('show fewer'),
 				'$update_interval' => $interval,
+				'$shortcut_icon' => $shortcut_icon,
+				'$touch_icon' => $touch_icon,
 				'$stylesheet' => $stylesheet
 			)) . $this->page['htmlhead'];
 		}
@@ -733,13 +800,13 @@ if(! class_exists('App')) {
 			if($this->cached_profile_picdate[$common_filename]){
 				$this->cached_profile_image[$avatar_image] = $avatar_image . $this->cached_profile_picdate[$common_filename];
 			} else {
-				$r = q("SELECT `contact`.`avatar-date` AS picdate FROM `contact` WHERE `contact`.`thumb` like \"%%/%s\"",
+				$r = q("SELECT `contact`.`avatar-date` AS picdate FROM `contact` WHERE `contact`.`thumb` like '%%/%s'",
 					$common_filename);
 				if(! count($r)){
 					$this->cached_profile_image[$avatar_image] = $avatar_image;
 				} else {
-					$this->cached_profile_picdate[$common_filename] = "?rev=" . urlencode($r[0]['picdate']);
-  					$this->cached_profile_image[$avatar_image] = $avatar_image . $this->cached_profile_picdate[$common_filename];
+					$this->cached_profile_picdate[$common_filename] = "?rev=".urlencode($r[0]['picdate']);
+					$this->cached_profile_image[$avatar_image] = $avatar_image.$this->cached_profile_picdate[$common_filename];
 				}
 			}
 			return $this->cached_profile_image[$avatar_image];
@@ -759,7 +826,7 @@ if(! class_exists('App')) {
 			}
 	 		if ($name===""){
  				echo "template engine <tt>$class</tt> cannot be registered without a name.\n";
-				killme(); 
+				killme();
  			}
 			$this->template_engines[$name] = $class;
 		}
@@ -767,7 +834,7 @@ if(! class_exists('App')) {
 		/**
 		 * return template engine instance. If $name is not defined,
 		 * return engine defined by theme, or default
-		 * 
+		 *
 		 * @param strin $name Template engine name
 		 * @return object Template Engine instance
 		 */
@@ -833,6 +900,10 @@ if(! class_exists('App')) {
 		function mark_timestamp($mark) {
 			//$this->performance["markstart"] -= microtime(true) - $this->performance["marktime"];
 			$this->performance["markstart"] = microtime(true) - $this->performance["markstart"] - $this->performance["marktime"];
+		}
+
+		function get_useragent() {
+			return(FRIENDICA_PLATFORM." '".FRIENDICA_CODENAME."' ".FRIENDICA_VERSION."-".DB_UPDATE_VERSION."; ".$this->get_baseurl());
 		}
 
 	}
@@ -962,7 +1033,6 @@ if(! function_exists('check_url')) {
 
 if(! function_exists('update_db')) {
 	function update_db(&$a) {
-
 		$build = get_config('system','build');
 		if(! x($build))
 			$build = set_config('system','build',DB_UPDATE_VERSION);
@@ -970,72 +1040,99 @@ if(! function_exists('update_db')) {
 		if($build != DB_UPDATE_VERSION) {
 			$stored = intval($build);
 			$current = intval(DB_UPDATE_VERSION);
-			if(($stored < $current) && file_exists('update.php')) {
-
+			if($stored < $current) {
 				load_config('database');
 
 				// We're reporting a different version than what is currently installed.
 				// Run any existing update scripts to bring the database up to current.
-
-				require_once('update.php');
 
 				// make sure that boot.php and update.php are the same release, we might be
 				// updating right this very second and the correct version of the update.php
 				// file may not be here yet. This can happen on a very busy site.
 
 				if(DB_UPDATE_VERSION == UPDATE_VERSION) {
+					// Compare the current structure with the defined structure
 
+					$t = get_config('database','dbupdate_'.DB_UPDATE_VERSION);
+					if($t !== false)
+						return;
+
+					set_config('database','dbupdate_'.DB_UPDATE_VERSION, time());
+
+					// run old update routine (wich could modify the schema and
+					// conflits with new routine)
+					for ($x = $stored; $x < NEW_UPDATE_ROUTINE_VERSION; $x++) {
+						$r = run_update_function($x);
+						if (!$r) break;
+					}
+					if ($stored < NEW_UPDATE_ROUTINE_VERSION) $stored = NEW_UPDATE_ROUTINE_VERSION;
+
+
+					// run new update routine
+					// it update the structure in one call
+					$retval = update_structure(false, true);
+					if($retval) {
+						update_fail(
+							DB_UPDATE_VERSION,
+							$retval
+						);
+						return;
+					} else {
+						set_config('database','dbupdate_'.DB_UPDATE_VERSION, 'success');
+					}
+
+					// run any left update_nnnn functions in update.php
 					for($x = $stored; $x < $current; $x ++) {
-						if(function_exists('update_' . $x)) {
-
-							// There could be a lot of processes running or about to run.
-							// We want exactly one process to run the update command.
-							// So store the fact that we're taking responsibility
-							// after first checking to see if somebody else already has.
-
-							// If the update fails or times-out completely you may need to
-							// delete the config entry to try again.
-
-							$t = get_config('database','update_' . $x);
-							if($t !== false)
-								break;
-							set_config('database','update_' . $x, time());
-
-							// call the specific update
-
-							$func = 'update_' . $x;
-							$retval = $func();
-							if($retval) {
-								//send the administrator an e-mail
-								$email_tpl = get_intltext_template("update_fail_eml.tpl");
-								$email_msg = replace_macros($email_tpl, array(
-									'$sitename' => $a->config['sitename'],
-									'$siteurl' =>  $a->get_baseurl(),
-									'$update' => $x,
-									'$error' => sprintf( t('Update %s failed. See error logs.'), $x)
-								));
-								$subject=sprintf(t('Update Error at %s'), $a->get_baseurl());
-								require_once('include/email.php');
-								$subject = email_header_encode($subject,'UTF-8');
-								mail($a->config['admin_email'], $subject, $email_msg,
-									'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
-									. 'Content-type: text/plain; charset=UTF-8' . "\n"
-									. 'Content-transfer-encoding: 8bit' );
-								//try the logger
-								logger('CRITICAL: Update Failed: '. $x);
-								break;
-							}
-							else {
-								set_config('database','update_' . $x, 'success');
-								set_config('system','build', $x + 1);
-							}
-						}
+						$r = run_update_function($x);
+						if (!$r) break;
 					}
 				}
 			}
 		}
 
 		return;
+	}
+}
+if(!function_exists('run_update_function')){
+	function run_update_function($x) {
+		if(function_exists('update_' . $x)) {
+
+			// There could be a lot of processes running or about to run.
+			// We want exactly one process to run the update command.
+			// So store the fact that we're taking responsibility
+			// after first checking to see if somebody else already has.
+
+			// If the update fails or times-out completely you may need to
+			// delete the config entry to try again.
+
+			$t = get_config('database','update_' . $x);
+			if($t !== false)
+				return false;
+			set_config('database','update_' . $x, time());
+
+			// call the specific update
+
+			$func = 'update_' . $x;
+			$retval = $func();
+
+			if($retval) {
+				//send the administrator an e-mail
+				update_fail(
+					$x,
+					sprintf(t('Update %s failed. See error logs.'), $x)
+				);
+				return false;
+			} else {
+				set_config('database','update_' . $x, 'success');
+				set_config('system','build', $x + 1);
+				return true;
+			}
+		} else {
+			set_config('database','update_' . $x, 'success');
+			set_config('system','build', $x + 1);
+			return true;
+		}
+		return true;
 	}
 }
 
@@ -1099,19 +1196,24 @@ if(! function_exists('check_plugins')) {
 	}
 }
 
+function get_guid($size=16, $prefix = "") {
 
-function get_guid($size=16) {
-	$exists = true; // assume by default that we don't have a unique guid
-	do {
-		$s = random_string($size);
-		$r = q("select id from guid where guid = '%s' limit 1", dbesc($s));
-		if(! count($r))
-			$exists = false;
-	} while($exists);
-	q("insert into guid ( guid ) values ( '%s' ) ", dbesc($s));
-	return $s;
+	if ($prefix == "") {
+		$a = get_app();
+		$prefix = hash("crc32", $a->get_hostname());
+	}
+
+	while (strlen($prefix) < ($size - 13))
+		$prefix .= mt_rand();
+
+	if ($size >= 24) {
+		$prefix = substr($prefix, 0, $size - 22);
+		return(str_replace(".", "", uniqid($prefix, true)));
+	} else {
+		$prefix = substr($prefix, 0, $size - 13);
+		return(uniqid($prefix));
+	}
 }
-
 
 // wrapper for adding a login box. If $register == true provide a registration
 // link. This will most always depend on the value of $a->config['register_policy'].
@@ -1130,7 +1232,7 @@ if(! function_exists('login')) {
 		}
 
 		$noid = get_config('system','no_openid');
-	
+
 		$dest_url = $a->get_baseurl(true) . '/' . $a->query_string;
 
 		if(local_user()) {
@@ -1151,18 +1253,18 @@ if(! function_exists('login')) {
 			'$dest_url'     => $dest_url,
 			'$logout'       => t('Logout'),
 			'$login'        => t('Login'),
-	
+
 			'$lname'	 	=> array('username', t('Nickname or Email address: ') , '', ''),
 			'$lpassword' 	=> array('password', t('Password: '), '', ''),
-			'$lremember'	=> array('remember', t('Remember me'), 0, ''),
-	
+			'$lremember'	=> array('remember', t('Remember me'), 0,  ''),
+
 			'$openid'		=> !$noid,
 			'$lopenid'      => array('openid_url', t('Or login using OpenID: '),'',''),
-	
+
 			'$hiddens'      => $hiddens,
-	
+
 			'$register'     => $reg,
-	
+
 			'$lostpass'     => t('Forgot your password?'),
 			'$lostlink'     => t('Password Reset'),
 
@@ -1225,9 +1327,9 @@ if(! function_exists('remote_user')) {
 if(! function_exists('notice')) {
 	/**
 	 * Show an error message to user.
-	 * 
+	 *
 	 * This function save text in session, to be shown to the user at next page load
-	 * 
+	 *
 	 * @param string $s - Text of notice
 	 */
 	function notice($s) {
@@ -1240,13 +1342,17 @@ if(! function_exists('notice')) {
 if(! function_exists('info')) {
 	/**
 	 * Show an info message to user.
-	 * 
+	 *
 	 * This function save text in session, to be shown to the user at next page load
-	 * 
+	 *
 	 * @param string $s - Text of notice
 	 */
 	function info($s) {
 		$a = get_app();
+
+		if (local_user() AND get_pconfig(local_user(),'system','ignore_info'))
+			return;
+
 		if(! x($_SESSION,'sysmsg_info')) $_SESSION['sysmsg_info'] = array();
 		if($a->interactive)
 			$_SESSION['sysmsg_info'][] = $s;
@@ -1291,13 +1397,13 @@ if(! function_exists('get_max_import_size')) {
  */
 
 if(! function_exists('profile_load')) {
-	function profile_load(&$a, $nickname, $profile = 0) {
+	function profile_load(&$a, $nickname, $profile = 0, $profiledata = array()) {
 
-		$user = q("select uid from user where nickname = '%s' limit 1",
+		$user = q("SELECT `uid` FROM `user` WHERE `nickname` = '%s' LIMIT 1",
 			dbesc($nickname)
 		);
 
-		if(! ($user && count($user))) {
+		if(!$user && count($user) && !count($profiledata)) {
 			logger('profile error: ' . $a->query_string, LOGGER_DEBUG);
 			notice( t('Requested account is not available.') . EOL );
 			$a->error = 404;
@@ -1322,21 +1428,21 @@ if(! function_exists('profile_load')) {
 		if($profile) {
 			$profile_int = intval($profile);
 			$r = q("SELECT `profile`.`uid` AS `profile_uid`, `profile`.* , `contact`.`avatar-date` AS picdate, `user`.* FROM `profile`
-					left join `contact` on `contact`.`uid` = `profile`.`uid` LEFT JOIN `user` ON `profile`.`uid` = `user`.`uid`
+					INNER JOIN `contact` on `contact`.`uid` = `profile`.`uid` INNER JOIN `user` ON `profile`.`uid` = `user`.`uid`
 					WHERE `user`.`nickname` = '%s' AND `profile`.`id` = %d and `contact`.`self` = 1 LIMIT 1",
 					dbesc($nickname),
 					intval($profile_int)
 			);
 		}
-		if((! $r) && (!  count($r))) {
+		if((!$r) && (!count($r))) {
 			$r = q("SELECT `profile`.`uid` AS `profile_uid`, `profile`.* , `contact`.`avatar-date` AS picdate, `user`.* FROM `profile`
-					left join `contact` on `contact`.`uid` = `profile`.`uid` LEFT JOIN `user` ON `profile`.`uid` = `user`.`uid`
+					INNER JOIN `contact` on `contact`.`uid` = `profile`.`uid` INNER JOIN `user` ON `profile`.`uid` = `user`.`uid`
 					WHERE `user`.`nickname` = '%s' AND `profile`.`is-default` = 1 and `contact`.`self` = 1 LIMIT 1",
 					dbesc($nickname)
 			);
 		}
 
-		if(($r === false) || (! count($r))) {
+		if(($r === false) || (!count($r)) && !count($profiledata)) {
 			logger('profile error: ' . $a->query_string, LOGGER_DEBUG);
 			notice( t('Requested profile is not available.') . EOL );
 			$a->error = 404;
@@ -1345,7 +1451,7 @@ if(! function_exists('profile_load')) {
 
 		// fetch user tags if this isn't the default profile
 
-		if(! $r[0]['is-default']) {
+		if(!$r[0]['is-default']) {
 			$x = q("select `pub_keywords` from `profile` where uid = %d and `is-default` = 1 limit 1",
 					intval($r[0]['profile_uid'])
 			);
@@ -1356,10 +1462,13 @@ if(! function_exists('profile_load')) {
 		$a->profile = $r[0];
 
 		$a->profile['mobile-theme'] = get_pconfig($a->profile['profile_uid'], 'system', 'mobile_theme');
-
+		$a->profile['network'] = NETWORK_DFRN;
 
 		$a->page['title'] = $a->profile['name'] . " @ " . $a->config['sitename'];
-		$_SESSION['theme'] = $a->profile['theme'];
+
+		if (!$profiledata)
+			$_SESSION['theme'] = $a->profile['theme'];
+
 		$_SESSION['mobile-theme'] = $a->profile['mobile-theme'];
 
 		/**
@@ -1376,7 +1485,7 @@ if(! function_exists('profile_load')) {
 		if(! (x($a->page,'aside')))
 			$a->page['aside'] = '';
 
-		if(local_user() && local_user() == $a->profile['uid']) {
+		if(local_user() && local_user() == $a->profile['uid'] && $profiledata) {
 			$a->page['aside'] .= replace_macros(get_markup_template('profile_edlink.tpl'),array(
 				'$editprofile' => t('Edit profile'),
 				'$profid' => $a->profile['id']
@@ -1385,7 +1494,14 @@ if(! function_exists('profile_load')) {
 
 		$block = (((get_config('system','block_public')) && (! local_user()) && (! remote_user())) ? true : false);
 
-		$a->page['aside'] .= profile_sidebar($a->profile, $block);
+		// To-Do:
+		// By now, the contact block isn't shown, when a different profile is given
+		// But: When this profile was on the same server, then we could display the contacts
+		if ($profiledata)
+			$a->page['aside'] .= profile_sidebar($profiledata, true);
+		else
+			$a->page['aside'] .= profile_sidebar($a->profile, $block);
+
 
 		/*if(! $block)
 		 $a->page['aside'] .= contact_block();*/
@@ -1413,7 +1529,6 @@ if(! function_exists('profile_load')) {
 
 if(! function_exists('profile_sidebar')) {
 	function profile_sidebar($profile, $block = 0) {
-
 		$a = get_app();
 
 		$o = '';
@@ -1426,14 +1541,22 @@ if(! function_exists('profile_sidebar')) {
 
 		$profile['picdate'] = urlencode($profile['picdate']);
 
+		if (($profile['network'] != "") AND ($profile['network'] != NETWORK_DFRN)) {
+			require_once('include/contact_selectors.php');
+			if ($profile['url'] != "")
+				$profile['network_name'] = '<a href="'.$profile['url'].'">'.network_to_name($profile['network'])."</a>";
+			else
+				$profile['network_name'] = network_to_name($profile['network']);
+		} else
+			$profile['network_name'] = "";
+
 		call_hooks('profile_sidebar_enter', $profile);
 
-	
+
 		// don't show connect link to yourself
 		$connect = (($profile['uid'] != local_user()) ? t('Connect')  : False);
 
 		// don't show connect link to authenticated visitors either
-
 		if(remote_user() && count($_SESSION['remote'])) {
 			foreach($_SESSION['remote'] as $visitor) {
 				if($visitor['uid'] == $profile['uid']) {
@@ -1443,20 +1566,36 @@ if(! function_exists('profile_sidebar')) {
 			}
 		}
 
+		// Is the local user already connected to that user?
+		if ($connect AND local_user()) {
+			if (isset($profile["url"]))
+				$profile_url = normalise_link($profile["url"]);
+			else
+				$profile_url = normalise_link($a->get_baseurl()."/profile/".$profile["nickname"]);
+
+			$r = q("SELECT * FROM `contact` WHERE NOT `pending` AND `uid` = %d AND `nurl` = '%s'",
+				local_user(), $profile_url);
+			if (count($r))
+				$connect = false;
+		}
+
+		if ($connect AND ($profile['network'] != NETWORK_DFRN) AND !isset($profile['remoteconnect']))
+				$connect = false;
+
+		if (isset($profile['remoteconnect']))
+			$remoteconnect = $profile['remoteconnect'];
+
 		if( get_my_url() && $profile['unkmail'] && ($profile['uid'] != local_user()) )
 			$wallmessage = t('Message');
 		else
 			$wallmessage = false;
 
-
-
 		// show edit profile to yourself
 		if ($profile['uid'] == local_user() && feature_enabled(local_user(),'multi_profiles')) {
 			$profile['edit'] = array($a->get_baseurl(). '/profiles', t('Profiles'),"", t('Manage/edit profiles'));
-		
 			$r = q("SELECT * FROM `profile` WHERE `uid` = %d",
 					local_user());
-		
+
 			$profile['menu'] = array(
 				'chg_photo' => t('Change profile photo'),
 				'cr_new' => t('Create New Profile'),
@@ -1481,18 +1620,15 @@ if(! function_exists('profile_sidebar')) {
 
 			}
 		}
-        if ($profile['uid'] == local_user() && !feature_enabled(local_user(),'multi_profiles')) {
-            $profile['edit'] = array($a->get_baseurl(). '/profiles/'.$profile['id'], t('Edit profile'),"", t('Edit profile'));
-        	$profile['menu'] = array(
+		if ($profile['uid'] == local_user() && !feature_enabled(local_user(),'multi_profiles')) {
+			$profile['edit'] = array($a->get_baseurl(). '/profiles/'.$profile['id'], t('Edit profile'),"", t('Edit profile'));
+			$profile['menu'] = array(
 				'chg_photo' => t('Change profile photo'),
 				'cr_new' => null,
 				'entries' => array(),
 			);
-        }
+		}
 
-
-
-	
 		if((x($profile,'address') == 1)
 				|| (x($profile,'locality') == 1)
 				|| (x($profile,'region') == 1)
@@ -1507,8 +1643,10 @@ if(! function_exists('profile_sidebar')) {
 
 		$homepage = ((x($profile,'homepage') == 1) ?  t('Homepage:') : False);
 
+		$about = ((x($profile,'about') == 1) ?  t('About:') : False);
+
 		if(($profile['hidewall'] || $block) && (! local_user()) && (! remote_user())) {
-			$location = $pdesc = $gender = $marital = $homepage = False;
+			$location = $pdesc = $gender = $marital = $homepage = $about = False;
 		}
 
 		$firstname = ((strpos($profile['name'],' '))
@@ -1529,8 +1667,24 @@ if(! function_exists('profile_sidebar')) {
 
 		if (!$block){
 			$contact_block = contact_block();
-		}
 
+			if(is_array($a->profile) AND !$a->profile['hide-friends']) {
+				$r = q("SELECT `gcontact`.`updated` FROM `contact` INNER JOIN `gcontact` WHERE `gcontact`.`nurl` = `contact`.`nurl` AND `self` AND `uid` = %d LIMIT 1",
+					intval($a->profile['uid']));
+				if(count($r))
+					$updated =  date("c", strtotime($r[0]['updated']));
+
+				$r = q("SELECT COUNT(*) AS `total` FROM `contact` WHERE `uid` = %d AND `self` = 0 AND `blocked` = 0 and `pending` = 0 AND `hidden` = 0 AND `archive` = 0
+						AND `network` IN ('%s', '%s', '%s', '')",
+					intval($profile['uid']),
+					dbesc(NETWORK_DFRN),
+					dbesc(NETWORK_DIASPORA),
+					dbesc(NETWORK_OSTATUS)
+				);
+				if(count($r))
+					$contacts = intval($r[0]['total']);
+			}
+		}
 
 		$p = array();
 		foreach($profile as $k => $v) {
@@ -1546,12 +1700,17 @@ if(! function_exists('profile_sidebar')) {
 		$o .= replace_macros($tpl, array(
 			'$profile' => $p,
 			'$connect'  => $connect,
+			'$remoteconnect'  => $remoteconnect,
 			'$wallmessage' => $wallmessage,
 			'$location' => $location,
 			'$gender'   => $gender,
 			'$pdesc'	=> $pdesc,
 			'$marital'  => $marital,
 			'$homepage' => $homepage,
+			'$about' => $about,
+			'$network' =>  t('Network:'),
+			'$contacts' => $contacts,
+			'$updated' => $updated,
 			'$diaspora' => $diaspora,
 			'$contact_block' => $contact_block,
 		));
@@ -1585,7 +1744,7 @@ if(! function_exists('get_birthdays')) {
 		$bd_short = t('F d');
 
 		$r = q("SELECT `event`.*, `event`.`id` AS `eid`, `contact`.* FROM `event`
-				LEFT JOIN `contact` ON `contact`.`id` = `event`.`cid`
+				INNER JOIN `contact` ON `contact`.`id` = `event`.`cid`
 				WHERE `event`.`uid` = %d AND `type` = 'birthday' AND `start` < '%s' AND `finish` > '%s'
 				ORDER BY `start` ASC ",
 				intval(local_user()),
@@ -1624,13 +1783,13 @@ if(! function_exists('get_birthdays')) {
 						$sparkle = " sparkle";
 						$url = $a->get_baseurl() . '/redir/'  . $rr['cid'];
 					}
-	
+
 					$rr['link'] = $url;
 					$rr['title'] = $rr['name'];
 					$rr['date'] = day_translate(datetime_convert('UTC', $a->timezone, $rr['start'], $rr['adjust'] ? $bd_format : $bd_short)) . (($today) ?  ' ' . t('[today]') : '');
 					$rr['startime'] = Null;
 					$rr['today'] = $today;
-	
+
 				}
 			}
 		}
@@ -1671,10 +1830,10 @@ if(! function_exists('get_events')) {
 		$bd_short = t('F d');
 
 		$r = q("SELECT `event`.* FROM `event`
-				WHERE `event`.`uid` = %d AND `type` != 'birthday' AND `start` < '%s' AND `start` > '%s'
+				WHERE `event`.`uid` = %d AND `type` != 'birthday' AND `start` < '%s' AND `start` >= '%s'
 				ORDER BY `start` ASC ",
 				intval(local_user()),
-				dbesc(datetime_convert('UTC','UTC','now + 6 days')),
+				dbesc(datetime_convert('UTC','UTC','now + 7 days')),
 				dbesc(datetime_convert('UTC','UTC','now - 1 days'))
 		);
 
@@ -1691,6 +1850,7 @@ if(! function_exists('get_events')) {
 			}
 			$classtoday = (($istoday) ? 'event-today' : '');
 
+			$skip = 0;
 
 			foreach($r as &$rr) {
 				if($rr['adjust'])
@@ -1704,8 +1864,14 @@ if(! function_exists('get_events')) {
 					$title = t('[No description]');
 
 				$strt = datetime_convert('UTC',$rr['convert'] ? $a->timezone : 'UTC',$rr['start']);
+
+				if(substr($strt,0,10) < datetime_convert('UTC',$a->timezone,'now','Y-m-d')) {
+					$skip++;
+					continue;
+				}
+
 				$today = ((substr($strt,0,10) === datetime_convert('UTC',$a->timezone,'now','Y-m-d')) ? true : false);
-				
+
 				$rr['link'] = $md;
 				$rr['title'] = $title;
 				$rr['date'] = day_translate(datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start'], $bd_format)) . (($today) ?  ' ' . t('[today]') : '');
@@ -1718,7 +1884,7 @@ if(! function_exists('get_events')) {
 		return replace_macros($tpl, array(
 			'$baseurl' => $a->get_baseurl(),
 			'$classtoday' => $classtoday,
-			'$count' => count($r),
+			'$count' => count($r) - $skip,
 			'$event_reminders' => t('Event Reminders'),
 			'$event_title' => t('Events this week:'),
 			'$events' => $r,
@@ -1765,7 +1931,7 @@ if(! function_exists('proc_run')) {
 		}
 
 		$args = $newargs;
-		
+
 		$arr = array('args' => $args, 'run_cmd' => true);
 
 		call_hooks("proc_run", $arr);
@@ -1774,14 +1940,14 @@ if(! function_exists('proc_run')) {
 
 		if(count($args) && $args[0] === 'php')
 			$args[0] = ((x($a->config,'php_path')) && (strlen($a->config['php_path'])) ? $a->config['php_path'] : 'php');
-        
+
         // add baseurl to args. cli scripts can't construct it
         $args[] = $a->get_baseurl();
-        
+
         for($x = 0; $x < count($args); $x ++)
 			$args[$x] = escapeshellarg($args[$x]);
 
-        
+
 
 		$cmdline = implode($args," ");
 		if(get_config('system','proc_windows'))
@@ -1794,9 +1960,9 @@ if(! function_exists('proc_run')) {
 if(! function_exists('current_theme')) {
 	function current_theme(){
 		$app_base_themes = array('duepuntozero', 'dispy', 'quattro');
-	
+
 		$a = get_app();
-	
+
 //		$mobile_detect = new Mobile_Detect();
 //		$is_mobile = $mobile_detect->isMobile() || $mobile_detect->isTablet();
 		$is_mobile = $a->is_mobile || $a->is_tablet;
@@ -1826,17 +1992,17 @@ if(! function_exists('current_theme')) {
 				(file_exists('view/theme/' . $theme_name . '/style.css') ||
 						file_exists('view/theme/' . $theme_name . '/style.php')))
 			return($theme_name);
-	
+
 		foreach($app_base_themes as $t) {
 			if(file_exists('view/theme/' . $t . '/style.css')||
 					file_exists('view/theme/' . $t . '/style.php'))
 				return($t);
 		}
-	
+
 		$fallback = array_merge(glob('view/theme/*/style.css'),glob('view/theme/*/style.php'));
 		if(count($fallback))
 			return (str_replace('view/theme/','', substr($fallback[0],0,-10)));
-	
+
 	}
 }
 
@@ -1876,7 +2042,7 @@ if(! function_exists('feed_birthday')) {
 		 *
 		 */
 
-	
+
 		$birthday = '';
 
 		if(! strlen($tz))
@@ -1906,7 +2072,11 @@ if(! function_exists('feed_birthday')) {
 if(! function_exists('is_site_admin')) {
 	function is_site_admin() {
 		$a = get_app();
-		if(local_user() && x($a->user,'email') && x($a->config,'admin_email') && ($a->user['email'] === $a->config['admin_email']))
+
+		$adminlist = explode(",", str_replace(" ", "", $a->config['admin_email']));
+
+		//if(local_user() && x($a->user,'email') && x($a->config,'admin_email') && ($a->user['email'] === $a->config['admin_email']))
+		if(local_user() && x($a->user,'email') && x($a->config,'admin_email') && in_array($a->user['email'], $adminlist))
 			return true;
 		return false;
 	}
@@ -1923,7 +2093,7 @@ if(! function_exists('load_contact_links')) {
 		if(! $uid || x($a->contacts,'empty'))
 			return;
 
-		$r = q("SELECT `id`,`network`,`url`,`thumb` FROM `contact` WHERE `uid` = %d AND `self` = 0 AND `blocked` = 0 ",
+		$r = q("SELECT `id`,`network`,`url`,`thumb` FROM `contact` WHERE `uid` = %d AND `self` = 0 AND `blocked` = 0 AND `thumb` != ''",
 				intval($uid)
 		);
 		if(count($r)) {
@@ -1942,13 +2112,13 @@ if(! function_exists('load_contact_links')) {
 if(! function_exists('profile_tabs')){
 	function profile_tabs($a, $is_owner=False, $nickname=Null){
 		//echo "<pre>"; var_dump($a->user); killme();
-	
+
 		if (is_null($nickname))
 			$nickname  = $a->user['nickname'];
-		
+
 		if(x($_GET,'tab'))
 			$tab = notags(trim($_GET['tab']));
-	
+
 		$url = $a->get_baseurl() . '/profile/' . $nickname;
 
 		$tabs = array(
@@ -1981,7 +2151,7 @@ if(! function_exists('profile_tabs')){
 				'id' => 'video-tab',
 			),
 		);
-	
+
 		if ($is_owner){
 			$tabs[] = array(
 				'label' => t('Events'),
@@ -2002,7 +2172,7 @@ if(! function_exists('profile_tabs')){
 
 		$arr = array('is_owner' => $is_owner, 'nickname' => $nickname, 'tab' => (($tab) ? $tab : false), 'tabs' => $tabs);
 		call_hooks('profile_tabs', $arr);
-	
+
 		$tpl = get_markup_template('common_tabs.tpl');
 
 		return replace_macros($tpl,array('$tabs' => $arr['tabs']));
@@ -2018,6 +2188,20 @@ function get_my_url() {
 function zrl_init(&$a) {
 	$tmp_str = get_my_url();
 	if(validate_url($tmp_str)) {
+
+		// Is it a DDoS attempt?
+		// The check fetches the cached value from gprobe to reduce the load for this system
+		$urlparts = parse_url($tmp_str);
+
+		$result = Cache::get("gprobe:".$urlparts["host"]);
+		if (!is_null($result)) {
+			$result = unserialize($result);
+			if ($result["network"] == NETWORK_FEED) {
+				logger("DDoS attempt detected for ".$urlparts["host"]." by ".$_SERVER["REMOTE_ADDR"].". server data: ".print_r($_SERVER, true), LOGGER_DEBUG);
+				return;
+			}
+		}
+
 		proc_run('php','include/gprobe.php',bin2hex($tmp_str));
 		$arr = array('zrl' => $tmp_str, 'url' => $a->cmd);
 		call_hooks('zrl_init',$arr);
@@ -2041,28 +2225,28 @@ function zrl($s,$force = false) {
 /**
 * returns querystring as string from a mapped array
 *
-* @param params Array 
+* @param params Array
 * @return string
 */
-function build_querystring($params, $name=null) { 
-    $ret = ""; 
+function build_querystring($params, $name=null) {
+    $ret = "";
     foreach($params as $key=>$val) {
-        if(is_array($val)) { 
+        if(is_array($val)) {
             if($name==null) {
-                $ret .= build_querystring($val, $key); 
+                $ret .= build_querystring($val, $key);
             } else {
-                $ret .= build_querystring($val, $name."[$key]");    
+                $ret .= build_querystring($val, $name."[$key]");
             }
         } else {
             $val = urlencode($val);
             if($name!=null) {
-                $ret.=$name."[$key]"."=$val&"; 
+                $ret.=$name."[$key]"."=$val&";
             } else {
-                $ret.= "$key=$val&"; 
+                $ret.= "$key=$val&";
             }
-        } 
-    } 
-    return $ret;    
+        }
+    }
+    return $ret;
 }
 
 function explode_querystring($query) {
@@ -2121,7 +2305,7 @@ function random_digits($digits) {
 }
 
 function get_cachefile($file, $writemode = true) {
-	$cache = get_config("system","itemcache");
+	$cache = get_itemcachepath();
 
 	if ((! $cache) || (! is_dir($cache)))
 		return("");
@@ -2142,7 +2326,7 @@ function get_cachefile($file, $writemode = true) {
 
 function clear_cache($basepath = "", $path = "") {
 	if ($path == "") {
-		$basepath = get_config('system','itemcache');
+		$basepath = get_itemcachepath();
 		$path = $basepath;
 	}
 
@@ -2156,6 +2340,7 @@ function clear_cache($basepath = "", $path = "") {
 	if ($cachetime == 0)
 		$cachetime = 86400;
 
+	if (is_writable($path)){
 	if ($dh = opendir($path)) {
 		while (($file = readdir($dh)) !== false) {
 			$fullpath = $path."/".$file;
@@ -2166,6 +2351,66 @@ function clear_cache($basepath = "", $path = "") {
 		}
 		closedir($dh);
 	}
+	}
+}
+
+function get_itemcachepath() {
+	// Checking, if the cache is deactivated
+	$cachetime = (int)get_config('system','itemcache_duration');
+	if ($cachetime < 0)
+		return "";
+
+	$itemcache = get_config('system','itemcache');
+	if (($itemcache != "") AND is_dir($itemcache) AND is_writable($itemcache))
+		return($itemcache);
+
+	$temppath = get_temppath();
+
+	if ($temppath != "") {
+		$itemcache = $temppath."/itemcache";
+		if(!file_exists($itemcache) && !is_dir($itemcache)) {
+			mkdir($itemcache);
+		}
+
+		if (is_dir($itemcache) AND is_writable($itemcache)) {
+			set_config("system", "itemcache", $itemcache);
+			return($itemcache);
+		}
+	}
+	return "";
+}
+
+function get_lockpath() {
+	$lockpath = get_config('system','lockpath');
+	if (($lockpath != "") AND is_dir($lockpath) AND is_writable($lockpath))
+		return($lockpath);
+
+	$temppath = get_temppath();
+
+	if ($temppath != "") {
+		$lockpath = $temppath."/lock";
+		mkdir($lockpath);
+
+		if (is_dir($lockpath) AND is_writable($lockpath)) {
+			set_config("system", "lockpath", $lockpath);
+			return($lockpath);
+		}
+	}
+	return "";
+}
+
+function get_temppath() {
+	$temppath = get_config("system","temppath");
+	if (($temppath != "") AND is_dir($temppath) AND is_writable($temppath))
+		return($temppath);
+
+	$temppath = sys_get_temp_dir();
+	if (($temppath != "") AND is_dir($temppath) AND is_writable($temppath)) {
+		set_config("system", "temppath", $temppath);
+		return($temppath);
+	}
+
+	return("");
 }
 
 function set_template_engine(&$a, $engine = 'internal') {
@@ -2175,3 +2420,9 @@ function set_template_engine(&$a, $engine = 'internal') {
 	$a->set_template_engine($engine);
 }
 
+if(!function_exists('exif_imagetype')) {
+        function exif_imagetype($file) {
+                $size = getimagesize($file);
+                return($size[2]);
+        }
+}

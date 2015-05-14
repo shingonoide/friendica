@@ -1,11 +1,12 @@
 <?php
 
-function follow_widget() {
+function follow_widget($value = "") {
 
 	return replace_macros(get_markup_template('follow.tpl'),array(
 		'$connect' => t('Add New Contact'),
 		'$desc' => t('Enter address or web location'),
 		'$hint' => t('Example: bob@example.com, http://example.com/barbara'),
+		'$value' => $value,
 		'$follow' => t('Connect')
 	));
 
@@ -49,8 +50,8 @@ function networks_widget($baseurl,$selected = '') {
 
 	if(! feature_enabled(local_user(),'networks'))
 		return '';
-	
-	$r = q("select distinct(network) from contact where uid = %d and self = 0",
+
+	$r = q("SELECT DISTINCT(`network`) FROM `contact` WHERE `uid` = %d AND `self` = 0 ORDER BY `network`",
 		intval(local_user())
 	);
 

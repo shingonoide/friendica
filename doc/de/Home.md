@@ -7,6 +7,7 @@ Friendica - Dokumentation und Ressourcen
 	* [Account - Basics](help/Account-Basics)
 	* [Schnellstart für neue Benutzer](help/Quick-Start-guide)
 	* [Beiträge erstellen](help/Text_editor)
+	* [Referenz der BBCode Elemente](help/BBCode)
 	* [Beiträge kommentieren, einordnen und löschen](help/Text_comment)
 	* [Profile](help/Profiles)
 * Du und andere Nutzer
@@ -32,6 +33,8 @@ Friendica - Dokumentation und Ressourcen
 * [Nachrichtenfluss](help/Message-Flow)
 * [Betreibe deine Seite mit einem SSL-Zertifikat](help/SSL)
 * [Entwickler](help/Developers)
+* [Twitter/StatusNet API Functions](help/api) (EN)
+* [Translation of Friendica](help/translations) (EN)
 
 
 **Externe Ressourcen**

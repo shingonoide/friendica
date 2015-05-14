@@ -53,6 +53,13 @@ if(!$install) {
 	load_config('config');
 	load_config('system');
 
+	if (get_config('system','force_ssl') AND ($a->get_scheme() == "http") AND
+		(intval(get_config('system','ssl_policy')) == SSL_POLICY_FULL) AND
+		(substr($a->get_baseurl(), 0, 8) == "https://")) {
+		header("HTTP/1.1 302 Moved Temporarily");
+		header("location: ".$a->get_baseurl()."/".$a->query_string);
+	}
+
 	require_once("include/session.php");
 	load_hooks();
 	call_hooks('init_1');
@@ -70,7 +77,7 @@ load_translation_table($lang);
  *
  * The order of these may be important so use caution if you think they're all
  * intertwingled with no logical order and decide to sort it out. Some of the
- * dependencies have changed, but at least at one time in the recent past - the 
+ * dependencies have changed, but at least at one time in the recent past - the
  * order was critical to everything working properly
  *
  */
@@ -103,7 +110,7 @@ if((x($_GET,'zrl')) && (!$install && !$maintenance)) {
  *
  * For Mozilla auth manager - still needs sorting, and this might conflict with LRDD header.
  * Apache/PHP lumps the Link: headers into one - and other services might not be able to parse it
- * this way. There's a PHP flag to link the headers because by default this will over-write any other 
+ * this way. There's a PHP flag to link the headers because by default this will over-write any other
  * link header.
  *
  * What we really need to do is output the raw headers ourselves so we can keep them separate.
@@ -118,7 +125,6 @@ if((x($_SESSION,'authenticated')) || (x($_POST,'auth-params')) || ($a->module ==
 if(! x($_SESSION,'authenticated'))
 	header('X-Account-Management-Status: none');
 
-
 /* set up page['htmlhead'] and page['end'] for the modules to use */
 $a->page['htmlhead'] = '';
 $a->page['end'] = '';
@@ -131,14 +137,16 @@ if(! x($_SESSION,'sysmsg_info'))
 	$_SESSION['sysmsg_info'] = array();
 
 /*
- * check_config() is responsible for running update scripts. These automatically 
+ * check_config() is responsible for running update scripts. These automatically
  * update the DB schema whenever we push a new one out. It also checks to see if
- * any plugins have been added or removed and reacts accordingly. 
+ * any plugins have been added or removed and reacts accordingly.
  */
 
-if($install)
+// in install mode, any url loads install module
+// but we need "view" module for stylesheet
+if($install && $a->module!="view")
 	$a->module = 'install';
-elseif($maintenance)
+elseif($maintenance && $a->module!="view")
 	$a->module = 'maintenance';
 else {
 	check_url($a);
@@ -167,13 +175,13 @@ if((local_user()) || (! $privateapps === "1"))
  * and use it for handling our URL request.
  * The module file contains a few functions that we call in various circumstances
  * and in the following order:
- * 
+ *
  * "module"_init
  * "module"_post (only called if there are $_POST variables)
  * "module"_afterpost
  * "module"_content - the string return of this function contains our page body
  *
- * Modules which emit other serialisations besides HTML (XML,JSON, etc.) should do 
+ * Modules which emit other serialisations besides HTML (XML,JSON, etc.) should do
  * so within the module init and/or post functions and then invoke killme() to terminate
  * further processing.
  */
@@ -190,6 +198,10 @@ if(strlen($a->module)) {
 	// Compatibility with the Android Diaspora client
 	if ($a->module == "stream")
 		$a->module = "network";
+
+	// Compatibility with the Firefox App
+	if (($a->module == "users") AND ($a->cmd == "users/sign_in"))
+		$a->module = "login";
 
 	$privateapps = get_config('config','private_addons');
 
@@ -218,8 +230,8 @@ if(strlen($a->module)) {
 	 *
 	 * The URL provided does not resolve to a valid module.
 	 *
-	 * On Dreamhost sites, quite often things go wrong for no apparent reason and they send us to '/internal_error.html'. 
-	 * We don't like doing this, but as it occasionally accounts for 10-20% or more of all site traffic - 
+	 * On Dreamhost sites, quite often things go wrong for no apparent reason and they send us to '/internal_error.html'.
+	 * We don't like doing this, but as it occasionally accounts for 10-20% or more of all site traffic -
 	 * we are going to trap this and redirect back to the requested page. As long as you don't have a critical error on your page
 	 * this will often succeed and eventually do the right thing.
 	 *
@@ -361,7 +373,7 @@ if(stristr( implode("",$_SESSION['sysmsg']), t('Permission denied'))) {
  * Report anything which needs to be communicated in the notification area (before the main body)
  *
  */
-	
+
 /*if(x($_SESSION,'sysmsg')) {
 	$a->page['content'] = "<div id=\"sysmsg\" class=\"error-message\">{$_SESSION['sysmsg']}</div>\r\n"
 		. ((x($a->page,'content')) ? $a->page['content'] : '');
@@ -428,18 +440,124 @@ else
 $a->page['htmlhead'] = str_replace('{{$stylesheet}}',$stylesheet,$a->page['htmlhead']);
 //$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => $stylesheet));
 
+if (isset($_GET["mode"]) AND (($_GET["mode"] == "raw") OR ($_GET["mode"] == "minimal"))) {
+	$doc = new DOMDocument();
+
+	$target = new DOMDocument();
+	$target->loadXML("<root></root>");
+
+	$content = mb_convert_encoding($a->page["content"], 'HTML-ENTITIES', "UTF-8");
+
+	@$doc->loadHTML($content);
+
+	$xpath = new DomXPath($doc);
+
+	$list = $xpath->query("//*[contains(@id,'tread-wrapper-')]");  /* */
+
+	foreach ($list as $item) {
+
+		$item = $target->importNode($item, true);
+
+		// And then append it to the target
+		$target->documentElement->appendChild($item);
+	}
+}
+
+if (isset($_GET["mode"]) AND ($_GET["mode"] == "raw")) {
+
+	header("Content-type: text/html; charset=utf-8");
+
+	echo substr($target->saveHTML(), 6, -8);
+
+	session_write_close();
+	exit;
+
+} elseif (get_pconfig(local_user(),'system','infinite_scroll')
+          AND ($a->module == "network") AND ($_GET["mode"] != "minimal")) {
+	if (is_string($_GET["page"]))
+		$pageno = $_GET["page"];
+	else
+		$pageno = 1;
+
+	$reload_uri = "";
+
+	foreach ($_GET AS $param => $value)
+		if (($param != "page") AND ($param != "q"))
+			$reload_uri .= "&".$param."=".urlencode($value);
+
+	if (($a->page_offset != "") AND !strstr($reload_uri, "&offset="))
+		$reload_uri .= "&offset=".urlencode($a->page_offset);
+
+
+$a->page['htmlhead'] .= <<< EOT
+<script type="text/javascript">
+
+$(document).ready(function() {
+    num = $pageno;
+});
+
+function loadcontent() {
+	if (lockLoadContent) return;
+	lockLoadContent = true;
+
+	$("#scroll-loader").fadeIn('normal');
+
+	num+=1;
+
+	console.log('Loading page ' + num);
+
+	$.get('/network?mode=raw$reload_uri&page=' + num, function(data) {
+		$("#scroll-loader").hide();
+		if ($(data).length > 0) {
+			$(data).insertBefore('#conversation-end');
+			lockLoadContent = false;
+		} else {
+			$("#scroll-end").fadeIn('normal');
+		}
+	});
+}
+
+var num = $pageno;
+var lockLoadContent = false;
+
+$(window).scroll(function(e){
+
+	if ($(document).height() != $(window).height()) {
+		// First method that is expected to work - but has problems with Chrome
+		if ($(window).scrollTop() > ($(document).height() - $(window).height() * 1.5))
+			loadcontent();
+	} else {
+		// This method works with Chrome - but seems to be much slower in Firefox
+		if ($(window).scrollTop() > (($("section").height() + $("header").height() + $("footer").height()) - $(window).height() * 1.5))
+			loadcontent();
+	}
+});
+</script>
+
+EOT;
+
+}
+
 $page    = $a->page;
 $profile = $a->profile;
 
 header("Content-type: text/html; charset=utf-8");
 
-$template = 'view/theme/' . current_theme() . '/' 
-	. ((x($a->page,'template')) ? $a->page['template'] : 'default' ) . '.php';
 
-if(file_exists($template))
-	require_once($template);
-else
-	require_once(str_replace('theme/' . current_theme() . '/', '', $template));
+if (isset($_GET["mode"]) AND ($_GET["mode"] == "minimal")) {
+	//$page['content'] = substr($target->saveHTML(), 6, -8)."\n\n".
+	//			'<div id="conversation-end"></div>'."\n\n";
+
+	require "view/minimal.php";
+} else {
+	$template = 'view/theme/' . current_theme() . '/'
+		. ((x($a->page,'template')) ? $a->page['template'] : 'default' ) . '.php';
+
+	if(file_exists($template))
+		require_once($template);
+	else
+		require_once(str_replace('theme/' . current_theme() . '/', '', $template));
+}
 
 session_write_close();
 exit;

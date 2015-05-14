@@ -15,7 +15,7 @@ function onepoll_run(&$argv, &$argc){
 	if(is_null($a)) {
 		$a = new App;
 	}
-  
+
 	if(is_null($db)) {
 	    @include(".htconfig.php");
     	require_once("include/dba.php");
@@ -57,28 +57,30 @@ function onepoll_run(&$argv, &$argc){
 		return;
 	}
 
-	// Test
-	$lockpath = get_config('system','lockpath');
+	$lockpath = get_lockpath();
 	if ($lockpath != '') {
-		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id.'.lck');
-		if($pidfile->is_already_running()) {
+		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id);
+		if ($pidfile->is_already_running()) {
 			logger("onepoll: Already running for contact ".$contact_id);
+			if ($pidfile->running_time() > 9*60) {
+				$pidfile->kill();
+				logger("killed stale process");
+			}
 			exit;
 		}
 	}
 
-
 	$d = datetime_convert();
 
 	// Only poll from those with suitable relationships,
-	// and which have a polling address and ignore Diaspora since 
+	// and which have a polling address and ignore Diaspora since
 	// we are unable to match those posts with a Diaspora GUID and prevent duplicates.
 
-	$contacts = q("SELECT `contact`.* FROM `contact` 
+	$contacts = q("SELECT `contact`.* FROM `contact`
 		WHERE ( `rel` = %d OR `rel` = %d ) AND `poll` != ''
 		AND NOT `network` IN ( '%s', '%s', '%s' )
 		AND `contact`.`id` = %d
-		AND `self` = 0 AND `contact`.`blocked` = 0 AND `contact`.`readonly` = 0 
+		AND `self` = 0 AND `contact`.`blocked` = 0 AND `contact`.`readonly` = 0
 		AND `contact`.`archive` = 0 LIMIT 1",
 		intval(CONTACT_IS_SHARING),
 		intval(CONTACT_IS_FRIEND),
@@ -111,8 +113,8 @@ function onepoll_run(&$argv, &$argc){
 
 
 	$importer_uid = $contact['uid'];
-		
-	$r = q("SELECT `contact`.*, `user`.`page-flags` FROM `contact` LEFT JOIN `user` on `contact`.`uid` = `user`.`uid` WHERE `user`.`uid` = %d AND `contact`.`self` = 1 LIMIT 1",
+
+	$r = q("SELECT `contact`.*, `user`.`page-flags` FROM `contact` INNER JOIN `user` on `contact`.`uid` = `user`.`uid` WHERE `user`.`uid` = %d AND `contact`.`self` = 1 LIMIT 1",
 		intval($importer_uid)
 	);
 	if(! count($r))
@@ -122,14 +124,14 @@ function onepoll_run(&$argv, &$argc){
 
 	logger("onepoll: poll: ({$contact['id']}) IMPORTER: {$importer['name']}, CONTACT: {$contact['name']}");
 
-	$last_update = (($contact['last-update'] === '0000-00-00 00:00:00') 
+	$last_update = (($contact['last-update'] === '0000-00-00 00:00:00')
 		? datetime_convert('UTC','UTC','now - 7 days', ATOM_TIME)
 		: datetime_convert('UTC','UTC',$contact['last-update'], ATOM_TIME)
 	);
 
 	if($contact['network'] === NETWORK_DFRN) {
 
-		
+
 		$idtosend = $orig_id = (($contact['dfrn-id']) ? $contact['dfrn-id'] : $contact['issued-id']);
 		if(intval($contact['duplex']) && $contact['dfrn-id'])
 			$idtosend = '0:' . $orig_id;
@@ -142,12 +144,12 @@ function onepoll_run(&$argv, &$argc){
 		// But this may be our first communication, so set the writable flag if it isn't set already.
 
 		if(! intval($contact['writable']))
-			q("update contact set writable = 1 where id = %d limit 1", intval($contact['id']));
+			q("update contact set writable = 1 where id = %d", intval($contact['id']));
 
 
-		$url = $contact['poll'] . '?dfrn_id=' . $idtosend 
-			. '&dfrn_version=' . DFRN_PROTOCOL_VERSION 
-			. '&type=data&last_update=' . $last_update 
+		$url = $contact['poll'] . '?dfrn_id=' . $idtosend
+			. '&dfrn_version=' . DFRN_PROTOCOL_VERSION
+			. '&type=data&last_update=' . $last_update
 			. '&perm=' . $perm ;
 
 		$handshake_xml = fetch_url($url);
@@ -160,13 +162,13 @@ function onepoll_run(&$argv, &$argc){
 			logger("poller: $url appears to be dead - marking for death ");
 
 			// dead connection - might be a transient event, or this might
-			// mean the software was uninstalled or the domain expired. 
+			// mean the software was uninstalled or the domain expired.
 			// Will keep trying for one month.
 
 			mark_for_death($contact);
 
 			// set the last-update so we don't keep polling
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d LIMIT 1",
+			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -174,12 +176,12 @@ function onepoll_run(&$argv, &$argc){
 			return;
 		}
 
-		if(! strstr($handshake_xml,'<?xml')) {
+		if(! strstr($handshake_xml,'<')) {
 			logger('poller: response from ' . $url . ' did not contain XML.');
 
 			mark_for_death($contact);
 
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d LIMIT 1",
+			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -188,7 +190,7 @@ function onepoll_run(&$argv, &$argc){
 
 
 		$res = parse_xml_string($handshake_xml);
-	
+
 		if(intval($res->status) == 1) {
 			logger("poller: $url replied status 1 - marking for death ");
 
@@ -196,7 +198,7 @@ function onepoll_run(&$argv, &$argc){
 			// set the last-update so we don't keep polling
 
 
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d LIMIT 1",
+			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -213,7 +215,7 @@ function onepoll_run(&$argv, &$argc){
 			return;
 
 		if(((float) $res->dfrn_version > 2.21) && ($contact['poco'] == '')) {
-			q("update contact set poco = '%s' where id = %d limit 1",
+			q("update contact set poco = '%s' where id = %d",
 				dbesc(str_replace('/profile/','/poco/', $contact['url'])),
 				intval($contact['id'])
 			);
@@ -267,7 +269,7 @@ function onepoll_run(&$argv, &$argc){
 			$stat_writeable = 1;
 
 		if($stat_writeable != $contact['writable']) {
-			q("UPDATE `contact` SET `writable` = %d WHERE `id` = %d LIMIT 1",
+			q("UPDATE `contact` SET `writable` = %d WHERE `id` = %d",
 				intval($stat_writeable),
 				intval($contact['id'])
 			);
@@ -282,13 +284,13 @@ function onepoll_run(&$argv, &$argc){
 	}
 	elseif($contact['network'] === NETWORK_MAIL || $contact['network'] === NETWORK_MAIL2) {
 
-		logger("onepoll: mail: Fetching", LOGGER_DEBUG);
+		logger("Mail: Fetching", LOGGER_DEBUG);
 
 		$mail_disabled = ((function_exists('imap_open') && (! get_config('system','imap_disabled'))) ? 0 : 1);
 		if($mail_disabled)
 			return;
 
-		logger("onepoll: Mail: Enabled", LOGGER_DEBUG);
+		logger("Mail: Enabled", LOGGER_DEBUG);
 
 		$mbox = null;
 		$x = q("SELECT `prvkey` FROM `user` WHERE `uid` = %d LIMIT 1",
@@ -305,12 +307,14 @@ function onepoll_run(&$argv, &$argc){
 			unset($password);
 			logger("Mail: Connect to " . $mailconf[0]['user']);
 			if($mbox) {
-				q("UPDATE `mailacct` SET `last_check` = '%s' WHERE `id` = %d AND `uid` = %d LIMIT 1",
+				q("UPDATE `mailacct` SET `last_check` = '%s' WHERE `id` = %d AND `uid` = %d",
 					dbesc(datetime_convert()),
 					intval($mailconf[0]['id']),
 					intval($importer_uid)
 				);
-			}
+				logger("Mail: Connected to " . $mailconf[0]['user']);
+			} else
+				logger("Mail: Connection error ".$mailconf[0]['user']." ".print_r(imap_errors()));
 		}
 		if($mbox) {
 
@@ -330,6 +334,8 @@ function onepoll_run(&$argv, &$argc){
 						logger("Mail: Parsing mail ".$msg_uid, LOGGER_DATA);
 
 						$datarray = array();
+						$datarray['verb'] = ACTIVITY_POST;
+						$datarray['object-type'] = ACTIVITY_OBJ_NOTE;
 	//					$meta = email_msg_meta($mbox,$msg_uid);
 	//					$headers = email_msg_headers($mbox,$msg_uid);
 
@@ -347,7 +353,7 @@ function onepoll_run(&$argv, &$argc){
 							// Only delete when mails aren't automatically moved or deleted
 							if (($mailconf[0]['action'] != 1) AND ($mailconf[0]['action'] != 3))
 								if($meta->deleted && ! $r[0]['deleted']) {
-									q("UPDATE `item` SET `deleted` = 1, `changed` = '%s' WHERE `id` = %d LIMIT 1",
+									q("UPDATE `item` SET `deleted` = 1, `changed` = '%s' WHERE `id` = %d",
 										dbesc(datetime_convert()),
 										intval($r[0]['id'])
 									);
@@ -423,7 +429,6 @@ function onepoll_run(&$argv, &$argc){
 
 						// If it seems to be a reply but a header couldn't be found take the last message with matching subject
 						if(!x($datarray,'parent-uri') and $reply) {
-							//$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE MATCH (`title`) AGAINST ('".'"%s"'."' IN BOOLEAN MODE) AND `uid` = %d ORDER BY `created` DESC LIMIT 1",
 							$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE `title` = \"%s\" AND `uid` = %d ORDER BY `created` DESC LIMIT 1",
 								dbesc(protect_sprintf($datarray['title'])),
 								intval($importer_uid));
@@ -496,7 +501,7 @@ function onepoll_run(&$argv, &$argc){
 							dbesc($datarray['parent-uri']),
 							intval($importer_uid)
 						);
-						q("UPDATE `item` SET `last-child` = 1 WHERE `id` = %d LIMIT 1",
+						q("UPDATE `item` SET `last-child` = 1 WHERE `id` = %d",
 							intval($stored_item)
 						);
 						switch ($mailconf[0]['action']) {
@@ -520,7 +525,10 @@ function onepoll_run(&$argv, &$argc){
 						}
 					}
 				}
-			}
+			} else
+				logger("Mail: no mails for ".$mailconf[0]['user']);
+
+			logger("Mail: closing connection for ".$mailconf[0]['user']);
 			imap_close($mbox);
 		}
 	}
@@ -534,9 +542,9 @@ function onepoll_run(&$argv, &$argc){
 
 	if($xml) {
 		logger('poller: received xml : ' . $xml, LOGGER_DATA);
-		if((! strstr($xml,'<?xml')) && (! strstr($xml,'<rss'))) {
+		if(! strstr($xml,'<')) {
 			logger('poller: post_handshake: response from ' . $url . ' did not contain XML.');
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d LIMIT 1",
+			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -574,7 +582,7 @@ function onepoll_run(&$argv, &$argc){
 
 	$updated = datetime_convert();
 
-	$r = q("UPDATE `contact` SET `last-update` = '%s', `success_update` = '%s' WHERE `id` = %d LIMIT 1",
+	$r = q("UPDATE `contact` SET `last-update` = '%s', `success_update` = '%s' WHERE `id` = %d",
 		dbesc($updated),
 		dbesc($updated),
 		intval($contact['id'])
@@ -583,8 +591,8 @@ function onepoll_run(&$argv, &$argc){
 
 	// load current friends if possible.
 
-	if($contact['poco']) {	
-		$r = q("SELECT count(*) as total from glink 
+	if($contact['poco']) {
+		$r = q("SELECT count(*) as total from glink
 			where `cid` = %d and updated > UTC_TIMESTAMP() - INTERVAL 1 DAY",
 			intval($contact['id'])
 		);
@@ -599,6 +607,6 @@ function onepoll_run(&$argv, &$argc){
 }
 
 if (array_search(__file__,get_included_files())===0){
-  onepoll_run($argv,$argc);
+  onepoll_run($_SERVER["argv"],$_SERVER["argc"]);
   killme();
 }

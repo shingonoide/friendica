@@ -14,15 +14,14 @@ class BaseObject {
 
 	/**
 	 * Get the app
-	 * 
+	 *
 	 * Same as get_app from boot.php
 	 */
 	public function get_app() {
 		if(self::$app)
 			return self::$app;
 
-		global $a;
-		self::$app = $a;
+		self::$app = get_app();
 
 		return self::$app;
 	}
@@ -34,4 +33,3 @@ class BaseObject {
 		self::$app = $app;
 	}
 }
-?>

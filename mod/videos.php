@@ -1,12 +1,14 @@
 <?php
+
+use Friendica\App;
+
 require_once('include/items.php');
 require_once('include/acl_selectors.php');
 require_once('include/bbcode.php');
 require_once('include/security.php');
 require_once('include/redir.php');
 
-
-function videos_init(&$a) {
+function videos_init(App $a) {
 
 	if($a->argc > 1)
 		auto_redir($a, $a->argv[1]);
@@ -15,23 +17,35 @@ function videos_init(&$a) {
 		return;
 	}
 
+	nav_set_selected('home');
+
 	$o = '';
 
 	if($a->argc > 1) {
 		$nick = $a->argv[1];
-		$r = q("SELECT * FROM `user` WHERE `nickname` = '%s' AND `blocked` = 0 LIMIT 1",
+		$user = q("SELECT * FROM `user` WHERE `nickname` = '%s' AND `blocked` = 0 LIMIT 1",
 			dbesc($nick)
 		);
 
-		if(! count($r))
+		if(! count($user))
 			return;
 
-		$a->data['user'] = $r[0];
+		$a->data['user'] = $user[0];
+		$a->profile_uid = $user[0]['uid'];
 
-		$o .= '<div class="vcard">';
-		$o .= '<div class="fn">' . $a->data['user']['username'] . '</div>';
-		$o .= '<div id="profile-photo-wrapper"><img class="photo" style="width: 175px; height: 175px;" src="' . $a->get_cached_avatar_image($a->get_baseurl() . '/photo/profile/' . $a->data['user']['uid'] . '.jpg') . '" alt="' . $a->data['user']['username'] . '" /></div>';
-		$o .= '</div>';
+		$profile = get_profiledata_by_nick($nick, $a->profile_uid);
+
+		$account_type = account_type($profile);
+
+		$tpl = get_markup_template("vcard-widget.tpl");
+
+		$vcard_widget .= replace_macros($tpl, array(
+			'$name' => $profile['name'],
+			'$photo' => $profile['photo'],
+			'$addr' => (($profile['addr'] != "") ? $profile['addr'] : ""),
+			'$account_type' => $account_type,
+			'$pdesc' => (($profile['pdesc'] != "") ? $profile['pdesc'] : ""),
+		));
 
 
 		/*$sql_extra = permissions_sql($a->data['user']['uid']);
@@ -43,12 +57,12 @@ function videos_init(&$a) {
 		if(count($albums)) {
 			$a->data['albums'] = $albums;
 
-			$albums_visible = ((intval($a->data['user']['hidewall']) && (! local_user()) && (! remote_user())) ? false : true);	
+			$albums_visible = ((intval($a->data['user']['hidewall']) && (! local_user()) && (! remote_user())) ? false : true);
 
 			if($albums_visible) {
-				$o .= '<div id="side-bar-photos-albums" class="widget">';
-				$o .= '<h3>' . '<a href="' . $a->get_baseurl() . '/photos/' . $a->data['user']['nickname'] . '">' . t('Photo Albums') . '</a></h3>';
-					
+				$o .= '<div id="sidebar-photos-albums" class="widget">';
+				$o .= '<h3>' . '<a href="' . App::get_baseurl() . '/photos/' . $a->data['user']['nickname'] . '">' . t('Photo Albums') . '</a></h3>';
+
 				$o .= '<ul>';
 				foreach($albums as $album) {
 
@@ -57,12 +71,12 @@ function videos_init(&$a) {
 
 					if((! strlen($album['album'])) || ($album['album'] === 'Contact Photos') || ($album['album'] === t('Contact Photos')))
 						continue;
-					$o .= '<li>' . '<a href="photos/' . $a->argv[1] . '/album/' . bin2hex($album['album']) . '" >' . $album['album'] . '</a></li>'; 
+					$o .= '<li>' . '<a href="photos/' . $a->argv[1] . '/album/' . bin2hex($album['album']) . '" >' . $album['album'] . '</a></li>';
 				}
 				$o .= '</ul>';
 			}
 			if(local_user() && $a->data['user']['uid'] == local_user()) {
-				$o .= '<div id="photo-albums-upload-link"><a href="' . $a->get_baseurl() . '/photos/' . $a->data['user']['nickname'] . '/upload" >' .t('Upload New Photos') . '</a></div>';
+				$o .= '<div id="photo-albums-upload-link"><a href="' . App::get_baseurl() . '/photos/' . $a->data['user']['nickname'] . '/upload" >' .t('Upload New Photos') . '</a></div>';
 			}
 
 			$o .= '</div>';
@@ -70,17 +84,17 @@ function videos_init(&$a) {
 
 		if(! x($a->page,'aside'))
 			$a->page['aside'] = '';
-		$a->page['aside'] .= $o;
+		$a->page['aside'] .= $vcard_widget;
 
 
 		$tpl = get_markup_template("videos_head.tpl");
 		$a->page['htmlhead'] .= replace_macros($tpl,array(
-			'$baseurl' => $a->get_baseurl(),
+			'$baseurl' => App::get_baseurl(),
 		));
 
 		$tpl = get_markup_template("videos_end.tpl");
 		$a->page['end'] .= replace_macros($tpl,array(
-			'$baseurl' => $a->get_baseurl(),
+			'$baseurl' => App::get_baseurl(),
 		));
 
 	}
@@ -90,16 +104,87 @@ function videos_init(&$a) {
 
 
 
-function videos_post(&$a) {
+function videos_post(App $a) {
 
-	return;
+	$owner_uid = $a->data['user']['uid'];
 
-	// DELETED -- look at mod/photos.php if you want to implement
+	if (local_user() != $owner_uid) {
+		goaway(App::get_baseurl() . '/videos/' . $a->data['user']['nickname']);
+	}
+
+	if (($a->argc == 2) && x($_POST,'delete') && x($_POST, 'id')) {
+
+		// Check if we should do HTML-based delete confirmation
+		if (!x($_REQUEST,'confirm')) {
+			if (x($_REQUEST,'canceled')) {
+				goaway(App::get_baseurl() . '/videos/' . $a->data['user']['nickname']);
+			}
+
+			$drop_url = $a->query_string;
+			$a->page['content'] = replace_macros(get_markup_template('confirm.tpl'), array(
+				'$method' => 'post',
+				'$message' => t('Do you really want to delete this video?'),
+				'$extra_inputs' => array(
+					array('name'=>'id', 'value'=> $_POST['id']),
+					array('name'=>'delete', 'value'=>'x')
+				),
+				'$confirm' => t('Delete Video'),
+				'$confirm_url' => $drop_url,
+				'$confirm_name' => 'confirm', // Needed so that confirmation will bring us back into this if statement
+				'$cancel' => t('Cancel'),
+
+			));
+			$a->error = 1; // Set $a->error so the other module functions don't execute
+			return;
+		}
+
+		$video_id = $_POST['id'];
+
+		$r = q("SELECT `id`  FROM `attach` WHERE `uid` = %d AND `id` = '%s' LIMIT 1",
+			intval(local_user()),
+			dbesc($video_id)
+		);
+
+		if (dbm::is_result($r)) {
+			q("DELETE FROM `attach` WHERE `uid` = %d AND `id` = '%s'",
+				intval(local_user()),
+				dbesc($video_id)
+			);
+			$i = q("SELECT * FROM `item` WHERE `attach` like '%%attach/%s%%' AND `uid` = %d LIMIT 1",
+				dbesc($video_id),
+				intval(local_user())
+			);
+			//echo "<pre>"; var_dump($i); killme();
+			if (dbm::is_result($i)) {
+				q("UPDATE `item` SET `deleted` = 1, `edited` = '%s', `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d",
+					dbesc(datetime_convert()),
+					dbesc(datetime_convert()),
+					dbesc($i[0]['uri']),
+					intval(local_user())
+				);
+				create_tags_from_itemuri($i[0]['uri'], local_user());
+				delete_thread_uri($i[0]['uri'], local_user());
+
+				$url = App::get_baseurl();
+				$drop_id = intval($i[0]['id']);
+
+				if ($i[0]['visible']) {
+					proc_run(PRIORITY_HIGH, "include/notifier.php", "drop", $drop_id);
+				}
+			}
+		}
+
+		goaway(App::get_baseurl() . '/videos/' . $a->data['user']['nickname']);
+		return; // NOTREACHED
+	}
+
+	goaway(App::get_baseurl() . '/videos/' . $a->data['user']['nickname']);
+
 }
 
 
 
-function videos_content(&$a) {
+function videos_content(App $a) {
 
 	// URLs (most aren't currently implemented):
 	// videos/name
@@ -115,8 +200,8 @@ function videos_content(&$a) {
 		notice( t('Public access denied.') . EOL);
 		return;
 	}
-	
-	
+
+
 	require_once('include/bbcode.php');
 	require_once('include/security.php');
 	require_once('include/conversation.php');
@@ -131,7 +216,7 @@ function videos_content(&$a) {
 	$_SESSION['video_return'] = $a->cmd;
 
 	//
-	// Parse arguments 
+	// Parse arguments
 	//
 
 	if($a->argc > 3) {
@@ -180,11 +265,11 @@ function videos_content(&$a) {
 					intval($contact_id),
 					intval($owner_uid)
 				);
-				if(count($r)) {
+				if (dbm::is_result($r)) {
 					$can_post = true;
 					$contact = $r[0];
 					$remote_contact = true;
-					$visitor = $cid;
+					$visitor = $contact_id;
 				}
 			}
 		}
@@ -208,7 +293,7 @@ function videos_content(&$a) {
 				intval($contact_id),
 				intval($owner_uid)
 			);
-			if(count($r)) {
+			if (dbm::is_result($r)) {
 				$contact = $r[0];
 				$remote_contact = true;
 			}
@@ -233,7 +318,7 @@ function videos_content(&$a) {
 
 	// tabs
 	$_is_owner = (local_user() && (local_user() == $owner_uid));
-	$o .= profile_tabs($a,$_is_owner, $a->data['user']['nickname']);	
+	$o .= profile_tabs($a,$_is_owner, $a->data['user']['nickname']);
 
 	//
 	// dispatch request
@@ -251,7 +336,7 @@ function videos_content(&$a) {
 		return; // no albums for now
 
 		// DELETED -- look at mod/photos.php if you want to implement
-	}	
+	}
 
 
 	if($datatype === 'video') {
@@ -268,12 +353,14 @@ function videos_content(&$a) {
 		$sql_extra GROUP BY hash",
 		intval($a->data['user']['uid'])
 	);
-	if(count($r)) {
+	if (dbm::is_result($r)) {
 		$a->set_pager_total(count($r));
 		$a->set_pager_itemspage(20);
 	}
 
-	$r = q("SELECT hash, `id`, `filename`, filetype FROM `attach`
+	$r = q("SELECT hash, ANY_VALUE(`id`) AS `id`, ANY_VALUE(`created`) AS `created`,
+		ANY_VALUE(`filename`) AS `filename`, ANY_VALUE(`filetype`) as `filetype`
+		FROM `attach`
 		WHERE `uid` = %d AND filetype LIKE '%%video%%'
 		$sql_extra GROUP BY hash ORDER BY `created` DESC LIMIT %d , %d",
 		intval($a->data['user']['uid']),
@@ -284,9 +371,9 @@ function videos_content(&$a) {
 
 
 	$videos = array();
-	if(count($r)) {
-		foreach($r as $rr) {
-			if($a->theme['template_engine'] === 'internal') {
+	if (dbm::is_result($r)) {
+		foreach ($r as $rr) {
+			if ($a->theme['template_engine'] === 'internal') {
 				$alt_e = template_escape($rr['filename']);
 				$name_e = template_escape($rr['album']);
 			}
@@ -297,31 +384,31 @@ function videos_content(&$a) {
 
 			$videos[] = array(
 				'id'       => $rr['id'],
-				'link'  	=> $a->get_baseurl() . '/videos/' . $a->data['user']['nickname'] . '/video/' . $rr['resource-id'],
-				'title' 	=> t('View Video'),
-				'src'     	=> $a->get_baseurl() . '/attach/' . $rr['id'] . '?attachment=0',
-				'alt'     	=> $alt_e,
-				'mime'		=> $rr['filetype'],
-				'album'	=> array(
-					'link'  => $a->get_baseurl() . '/videos/' . $a->data['user']['nickname'] . '/album/' . bin2hex($rr['album']),
+				'link'     => App::get_baseurl() . '/videos/' . $a->data['user']['nickname'] . '/video/' . $rr['resource-id'],
+				'title'    => t('View Video'),
+				'src'      => App::get_baseurl() . '/attach/' . $rr['id'] . '?attachment=0',
+				'alt'      => $alt_e,
+				'mime'     => $rr['filetype'],
+				'album' => array(
+					'link'  => App::get_baseurl() . '/videos/' . $a->data['user']['nickname'] . '/album/' . bin2hex($rr['album']),
 					'name'  => $name_e,
 					'alt'   => t('View Album'),
 				),
-				
+
 			);
 		}
 	}
-	
-	$tpl = get_markup_template('videos_recent.tpl'); 
+
+	$tpl = get_markup_template('videos_recent.tpl');
 	$o .= replace_macros($tpl, array(
-		'$title' => t('Recent Videos'),
-		'$can_post' => $can_post,
-		'$upload' => array(t('Upload New Videos'), $a->get_baseurl().'/videos/'.$a->data['user']['nickname'].'/upload'),
-		'$videos' => $videos,
+		'$title'      => t('Recent Videos'),
+		'$can_post'   => $can_post,
+		'$upload'     => array(t('Upload New Videos'), App::get_baseurl().'/videos/'.$a->data['user']['nickname'].'/upload'),
+		'$videos'     => $videos,
+		'$delete_url' => (($can_post)?App::get_baseurl().'/videos/'.$a->data['user']['nickname']:False)
 	));
 
-	
+
 	$o .= paginate($a);
 	return $o;
 }
-

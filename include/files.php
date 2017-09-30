@@ -1,6 +1,6 @@
 <?php
 function create_files_from_item($itemid) {
-	global $a;
+	$a = get_app();
 
 	$messages = q("SELECT `guid`, `uid`, `id`, `edited`, `deleted`, `file`, `parent` FROM `item` WHERE `id` = %d LIMIT 1", intval($itemid));
 
@@ -33,7 +33,7 @@ function create_files_from_item($itemid) {
 function create_files_from_itemuri($itemuri, $uid) {
 	$messages = q("SELECT `id` FROM `item` WHERE uri ='%s' AND uid=%d", dbesc($itemuri), intval($uid));
 
-	if(count($messages)) {
+	if (count($messages)) {
 		foreach ($messages as $message)
 			create_files_from_item($message["id"]);
 	}
@@ -47,4 +47,3 @@ function update_files_for_items() {
 		create_files_from_item($message["id"]);
 	}
 }
-?>

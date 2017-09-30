@@ -1,8 +1,10 @@
 <?php
 
-require_once('include/Scrape.php');
+use Friendica\App;
 
-function acctlink_init(&$a) {
+require_once 'include/probe.php';
+
+function acctlink_init(App $a) {
 
 	if(x($_GET,'addr')) {
 		$addr = trim($_GET['addr']);

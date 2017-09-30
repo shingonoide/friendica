@@ -1,5 +1,12 @@
 <?php
 
+use Friendica\App;
+
+require_once("include/bbcode.php");
+require_once('include/security.php');
+require_once('include/conversation.php');
+require_once('mod/dirfind.php');
+
 function search_saved_searches() {
 
 	$o = '';
@@ -7,19 +14,19 @@ function search_saved_searches() {
 	if(! feature_enabled(local_user(),'savedsearch'))
 		return $o;
 
-	$r = q("select `id`,`term` from `search` WHERE `uid` = %d",
+	$r = q("SELECT `id`,`term` FROM `search` WHERE `uid` = %d",
 		intval(local_user())
 	);
 
-	if(count($r)) {
+	if (dbm::is_result($r)) {
 		$saved = array();
-		foreach($r as $rr) {
+		foreach ($r as $rr) {
 			$saved[] = array(
-				'id'            => $rr['id'],
-				'term'			=> $rr['term'],
-				'encodedterm' 	=> urlencode($rr['term']),
-				'delete'		=> t('Remove term'),
-				'selected'		=> ($search==$rr['term']),
+				'id'		=> $rr['id'],
+				'term'		=> $rr['term'],
+				'encodedterm'	=> urlencode($rr['term']),
+				'delete'	=> t('Remove term'),
+				'selected'	=> ($search==$rr['term']),
 			);
 		}
 
@@ -27,10 +34,10 @@ function search_saved_searches() {
 		$tpl = get_markup_template("saved_searches_aside.tpl");
 
 		$o .= replace_macros($tpl, array(
-			'$title'	 => t('Saved Searches'),
-			'$add'		 => '',
-			'$searchbox' => '',
-			'$saved' 	 => $saved,
+			'$title'	=> t('Saved Searches'),
+			'$add'		=> '',
+			'$searchbox'	=> '',
+			'$saved' 	=> $saved,
 		));
 	}
 
@@ -39,25 +46,25 @@ function search_saved_searches() {
 }
 
 
-function search_init(&$a) {
+function search_init(App $a) {
 
 	$search = ((x($_GET,'search')) ? notags(trim(rawurldecode($_GET['search']))) : '');
 
 	if(local_user()) {
 		if(x($_GET,'save') && $search) {
-			$r = q("select * from `search` where `uid` = %d and `term` = '%s' limit 1",
+			$r = q("SELECT * FROM `search` WHERE `uid` = %d AND `term` = '%s' LIMIT 1",
 				intval(local_user()),
 				dbesc($search)
 			);
-			if(! count($r)) {
-				q("insert into `search` ( `uid`,`term` ) values ( %d, '%s') ",
+			if (! dbm::is_result($r)) {
+				q("INSERT INTO `search` (`uid`,`term`) VALUES ( %d, '%s')",
 					intval(local_user()),
 					dbesc($search)
 				);
 			}
 		}
 		if(x($_GET,'remove') && $search) {
-			q("delete from `search` where `uid` = %d and `term` = '%s' limit 1",
+			q("DELETE FROM `search` WHERE `uid` = %d AND `term` = '%s' LIMIT 1",
 				intval(local_user()),
 				dbesc($search)
 			);
@@ -77,26 +84,56 @@ function search_init(&$a) {
 
 
 
-function search_post(&$a) {
+function search_post(App $a) {
 	if(x($_POST,'search'))
 		$a->data['search'] = $_POST['search'];
 }
 
 
-function search_content(&$a) {
+function search_content(App $a) {
 
 	if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
 		notice( t('Public access denied.') . EOL);
 		return;
 	}
 
+	if(get_config('system','local_search') AND !local_user()) {
+		http_status_exit(403,
+				array("title" => t("Public access denied."),
+					"description" => t("Only logged in users are permitted to perform a search.")));
+		killme();
+		//notice(t('Public access denied.').EOL);
+		//return;
+	}
+
+	if (get_config('system','permit_crawling') AND !local_user()) {
+		// Default values:
+		// 10 requests are "free", after the 11th only a call per minute is allowed
+
+		$free_crawls = intval(get_config('system','free_crawls'));
+		if ($free_crawls == 0)
+			$free_crawls = 10;
+
+		$crawl_permit_period = intval(get_config('system','crawl_permit_period'));
+		if ($crawl_permit_period == 0)
+			$crawl_permit_period = 10;
+
+		$remote = $_SERVER["REMOTE_ADDR"];
+		$result = Cache::get("remote_search:".$remote);
+		if (!is_null($result)) {
+			$resultdata = json_decode($result);
+			if (($resultdata->time > (time() - $crawl_permit_period)) AND ($resultdata->accesses > $free_crawls)) {
+				http_status_exit(429,
+						array("title" => t("Too Many Requests"),
+							"description" => t("Only one search per minute is permitted for not logged in users.")));
+				killme();
+			}
+			Cache::set("remote_search:".$remote, json_encode(array("time" => time(), "accesses" => $resultdata->accesses + 1)), CACHE_HOUR);
+		} else
+			Cache::set("remote_search:".$remote, json_encode(array("time" => time(), "accesses" => 1)), CACHE_HOUR);
+	}
+
 	nav_set_selected('search');
-
-	require_once("include/bbcode.php");
-	require_once('include/security.php');
-	require_once('include/conversation.php');
-
-	$o = '<h3>' . t('Search') . '</h3>';
 
 	if(x($a->data,'search'))
 		$search = notags(trim($a->data['search']));
@@ -109,17 +146,39 @@ function search_content(&$a) {
 		$search = ((x($_GET,'tag')) ? notags(trim(rawurldecode($_GET['tag']))) : '');
 	}
 
-
-	$o .= search($search,'search-box','/search',((local_user()) ? true : false));
+	// contruct a wrapper for the search header
+	$o .= replace_macros(get_markup_template("content_wrapper.tpl"),array(
+		'name' => "search-header",
+		'$title' => t("Search"),
+		'$title_size' => 3,
+		'$content' => search($search,'search-box','search',((local_user()) ? true : false), false)
+	));
 
 	if(strpos($search,'#') === 0) {
 		$tag = true;
 		$search = substr($search,1);
 	}
 	if(strpos($search,'@') === 0) {
-		require_once('mod/dirfind.php');
 		return dirfind_content($a);
 	}
+	if(strpos($search,'!') === 0) {
+		return dirfind_content($a);
+	}
+
+	if(x($_GET,'search-option'))
+		switch($_GET['search-option']) {
+			case 'fulltext':
+				break;
+			case 'tags':
+				$tag = true;
+				break;
+			case 'contacts':
+				return dirfind_content($a, "@");
+				break;
+			case 'forums':
+				return dirfind_content($a, "!");
+				break;
+		}
 
 	if(! $search)
 		return $o;
@@ -135,51 +194,44 @@ function search_content(&$a) {
 	if($tag) {
 		logger("Start tag search for '".$search."'", LOGGER_DEBUG);
 
-		$r = q("SELECT `item`.`uri`, `item`.*, `item`.`id` AS `item_id`,
-				`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`alias`, `contact`.`rel`,
-				`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`,
-				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
+		$r = q("SELECT %s
 			FROM `term`
-				INNER JOIN `item` ON `item`.`id`=`term`.`oid`
-				INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id` AND NOT `contact`.`blocked` AND NOT `contact`.`pending`
-			WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
-				AND (`term`.`uid` = 0 OR (`term`.`uid` = %d AND NOT `term`.`global`)) AND `term`.`otype` = %d AND `term`.`type` = %d AND `term`.`term` = '%s'
+				STRAIGHT_JOIN `item` ON `item`.`id`=`term`.`oid` %s
+			WHERE %s AND (`term`.`uid` = 0 OR (`term`.`uid` = %d AND NOT `term`.`global`)) AND `term`.`otype` = %d AND `term`.`type` = %d AND `term`.`term` = '%s'
 			ORDER BY term.created DESC LIMIT %d , %d ",
-				intval(local_user()), intval(TERM_OBJ_POST), intval(TERM_HASHTAG), dbesc(protect_sprintf($search)),
+				item_fieldlists(), item_joins(), item_condition(),
+				intval(local_user()),
+				intval(TERM_OBJ_POST), intval(TERM_HASHTAG), dbesc(protect_sprintf($search)),
 				intval($a->pager['start']), intval($a->pager['itemspage']));
 	} else {
 		logger("Start fulltext search for '".$search."'", LOGGER_DEBUG);
 
-		if (get_config('system','use_fulltext_engine')) {
-			$sql_extra = sprintf(" AND MATCH (`item`.`body`, `item`.`title`) AGAINST ('%s' in boolean mode) ", dbesc(protect_sprintf($search)));
-		} else {
-			$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
-		}
+		$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
 
-		$r = q("SELECT `item`.`uri`, `item`.*, `item`.`id` AS `item_id`,
-				`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`alias`, `contact`.`rel`,
-				`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`,
-				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
-			FROM `item`
-				INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id` AND NOT `contact`.`blocked` AND NOT `contact`.`pending`
-			WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
-				AND (`item`.`uid` = 0 OR (`item`.`uid` = %s AND (`item`.`private` OR NOT `item`.`network` IN ('%s', '%s', '%s'))))
+		$r = q("SELECT %s
+			FROM `item` %s
+			WHERE %s AND (`item`.`uid` = 0 OR (`item`.`uid` = %s AND NOT `item`.`global`))
 				$sql_extra
-			GROUP BY `item`.`uri` ORDER BY `item`.`id` DESC LIMIT %d , %d ",
-				intval(local_user()), dbesc(NETWORK_DFRN), dbesc(NETWORK_OSTATUS), dbesc(NETWORK_DIASPORA),
+			GROUP BY `item`.`uri`, `item`.`id` ORDER BY `item`.`id` DESC LIMIT %d , %d",
+				item_fieldlists(), item_joins(), item_condition(),
+				intval(local_user()),
 				intval($a->pager['start']), intval($a->pager['itemspage']));
 	}
 
-	if(! count($r)) {
+	if (! dbm::is_result($r)) {
 		info( t('No results.') . EOL);
 		return $o;
 	}
 
 
 	if($tag)
-		$o .= '<h2>Items tagged with: ' . $search . '</h2>';
+		$title = sprintf( t('Items tagged with: %s'), $search);
 	else
-		$o .= '<h2>Search results for: ' . $search . '</h2>';
+		$title = sprintf( t('Results for: %s'), $search);
+
+	$o .= replace_macros(get_markup_template("section_title.tpl"),array(
+		'$title' => $title
+	));
 
 	logger("Start Conversation for '".$search."'", LOGGER_DEBUG);
 	$o .= conversation($a,$r,'search',false);

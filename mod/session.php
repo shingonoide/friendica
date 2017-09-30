@@ -1,5 +1,7 @@
 <?php
 
-function session_content(&$a) {
+use Friendica\App;
+
+function session_content(App $a) {
 
 }

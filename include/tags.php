@@ -1,13 +1,14 @@
 <?php
-function create_tags_from_item($itemid) {
-	global $a;
 
-	$profile_base = $a->get_baseurl();
+use Friendica\App;
+
+function create_tags_from_item($itemid) {
+	$profile_base = App::get_baseurl();
 	$profile_data = parse_url($profile_base);
 	$profile_base_friendica = $profile_data['host'].$profile_data['path']."/profile/";
 	$profile_base_diaspora = $profile_data['host'].$profile_data['path']."/u/";
 
-	$searchpath = $a->get_baseurl()."/search?tag=";
+	$searchpath = App::get_baseurl()."/search?tag=";
 
 	$messages = q("SELECT `guid`, `uid`, `id`, `edited`, `deleted`, `created`, `received`, `title`, `body`, `tag`, `parent` FROM `item` WHERE `id` = %d LIMIT 1", intval($itemid));
 
@@ -113,12 +114,11 @@ function create_tags_from_itemuri($itemuri, $uid) {
 }
 
 function update_items() {
-	global $db;
 
-        $messages = $db->q("SELECT `oid`,`item`.`guid`, `item`.`created`, `item`.`received` FROM `term` INNER JOIN `item` ON `item`.`id`=`term`.`oid` WHERE `term`.`otype` = 1 AND `term`.`guid` = ''", true);
+	$messages = dba::p("SELECT `oid`,`item`.`guid`, `item`.`created`, `item`.`received` FROM `term` INNER JOIN `item` ON `item`.`id`=`term`.`oid` WHERE `term`.`otype` = 1 AND `term`.`guid` = ''");
 
-        logger("fetched messages: ".count($messages));
-        while ($message = $db->qfetch()) {
+	logger("fetched messages: ".dba::num_rows($messages));
+	while ($message = dba::fetch($messages)) {
 
 		if ($message["uid"] == 0) {
 			$global = true;
@@ -137,15 +137,14 @@ function update_items() {
 			intval($global), intval(TERM_OBJ_POST), intval($message["oid"]));
 	}
 
-        $db->qclose();
+	dba::close($messages);
 
-	$messages = $db->q("SELECT `guid` FROM `item` WHERE `uid` = 0", true);
+	$messages = dba::p("SELECT `guid` FROM `item` WHERE `uid` = 0");
 
-	logger("fetched messages: ".count($messages));
-	while ($message = $db->qfetch()) {
+	logger("fetched messages: ".dba::num_rows($messages));
+	while ($message = dba::fetch(messages)) {
 		q("UPDATE `item` SET `global` = 1 WHERE `guid` = '%s'", dbesc($message["guid"]));
 	}
 
-	$db->qclose();
+	dba::close($messages);
 }
-?>

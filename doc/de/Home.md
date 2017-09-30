@@ -10,6 +10,8 @@ Friendica - Dokumentation und Ressourcen
 	* [Referenz der BBCode Elemente](help/BBCode)
 	* [Beiträge kommentieren, einordnen und löschen](help/Text_comment)
 	* [Profile](help/Profiles)
+	* [Referenz der Accesskeys](help/Accesskeys)
+    * [Veranstaltungen](help/events) (EN)
 * Du und andere Nutzer
 	* [Konnektoren (Connectors)](help/Connectors)
 	* [Freunde finden](help/Making-Friends)
@@ -18,24 +20,39 @@ Friendica - Dokumentation und Ressourcen
 	* [Community-Foren](help/Forums)
 	* [Chats](help/Chats)
 * Weiterführende Informationen
-	* [Performance verbessern](help/Improve-Performance)
 	* [Account umziehen](help/Move-Account)
 	* [Account löschen](help/Remove-Account)
 	* [Bugs und Probleme](help/Bugs-and-Issues)
 	* [Häufig gestellte Fragen (FAQ)](help/FAQ)
- 	
-**Technische Dokumentation**
+
+**Dokumentation für Administratoren**
 
 * [Installation](help/Install)
-* [Konfigurationen](help/Settings)
+* [Konfigurationen & Admin-Panel](help/Settings)
 * [Plugins](help/Plugins)
-* [Konnektoren (Connectors) installieren (Facebook/Twitter/StatusNet)](help/Installing-Connectors)
-* [Nachrichtenfluss](help/Message-Flow)
+* [Konnektoren (Connectors) installieren (Twitter/GNU Social)](help/Installing-Connectors)
+* [Installation eines ejabberd Servers (XMPP-Chat) mit synchronisierten Anmeldedaten](help/install-ejabberd) (EN)
 * [Betreibe deine Seite mit einem SSL-Zertifikat](help/SSL)
-* [Entwickler](help/Developers)
-* [Twitter/StatusNet API Functions](help/api) (EN)
-* [Translation of Friendica](help/translations) (EN)
+* [Konfigurationswerte, die nur in der .htconfig.php gesetzt werden können](help/htconfig) (EN)
+* [Performance verbessern](help/Improve-Performance)
 
+**Dokumentation für Entwickler**
+
+* [Entwickler](help/Developers)
+* [Where to get started?](help/Developers-Intro) (EN)
+* [Help on Github](help/Github)
+* [Help on Vagrant](help/Vagrant)
+* [How to translate Friendica](help/translations) (EN)
+* [Bugs and Issues](help/Bugs-and-Issues)
+* [Plugin Development](help/Plugins)
+* [Theme Development](help/themes)
+* [Smarty 3 Templates](help/smarty3-templates)
+* [Protokoll Dokumentation](help/Protocol) (EN)
+* [Datenbank-Schema](help/database)
+* [Class Autoloading](help/autoloader) (EN)
+* [Using Composer](help/Composer) (EN)
+* [Code-Referenz (mit doxygen generiert - setzt Cookies)](doc/html/)
+* [Twitter/GNU Social API Functions](help/api) (EN)
 
 **Externe Ressourcen**
 
@@ -46,4 +63,5 @@ Friendica - Dokumentation und Ressourcen
 **Über diese Seite**
 
 * [Seite/Friendica-Version](friendica)
+* [Mitwirkenden bei Friendica](credits)
 

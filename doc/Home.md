@@ -7,9 +7,11 @@ Friendica Documentation and Resources
 	* [Account Basics](help/Account-Basics)
 	* [New User Quick Start](help/Quick-Start-guide)
 	* [Creating posts](help/Text_editor)
-        * [BBCode tag reference](help/BBCode)
+	* [BBCode tag reference](help/BBCode)
 	* [Comment, sort and delete posts](help/Text_comment)
 	* [Profiles](help/Profiles)
+	* [Accesskey reference](help/Accesskeys)
+	* [Events](help/events)
 * You and other users
 	* [Connectors](help/Connectors)
 	* [Making Friends](help/Making-Friends)
@@ -18,7 +20,6 @@ Friendica Documentation and Resources
 	* [Community Forums](help/Forums)
 	* [Chats](help/Chats)
 * Further information
-	* [Improve Performance](help/Improve-Performance)
 	* [Move your account](help/Move-Account)
 	* [Delete your account](help/Remove-Account)
 	* [Frequently asked questions (FAQ)](help/FAQ)
@@ -26,21 +27,34 @@ Friendica Documentation and Resources
 **Admin Manual**
 
 * [Install](help/Install)
-* [Settings](help/Settings)
-* [Plugins](help/Plugins)
-* [Installing Connectors (Facebook/Twitter/StatusNet)](help/Installing-Connectors)
-* [Message Flow](help/Message-Flow)
+* [Settings & Admin Panel](help/Settings)
+* [Installing Connectors (Twitter/GNU Social)](help/Installing-Connectors)
+* [Install an ejabberd server (XMPP chat) with synchronized credentials](help/install-ejabberd)
 * [Using SSL with Friendica](help/SSL)
-* [Twitter/StatusNet API Functions](help/api)
+* [Config values that can only be set in .htconfig.php](help/htconfig)
+* [Improve Performance](help/Improve-Performance)
 
 **Developer Manual**
 
-* [Where to get started?](help/Developers-Intro)
-* [Help on Github](help/Github)
-* [Help on Vagrant](help/Vagrant)
-* [How to translate Friendica](help/translations)
-* [Bugs and Issues](help/Bugs-and-Issues)
-* [Smarty 3 Templates](help/smarty3-templates)
+* [Get started](help/Developers-Intro)
+* Set up development environment
+	* [Help on Github](help/Github)
+	* [Help on Vagrant](help/Vagrant)
+	* [Bugs and Issues](help/Bugs-and-Issues)
+* Code structure
+	* [Plugin Development](help/Plugins)
+	* [Theme Development](help/themes)
+	* [Smarty 3 Templates](help/smarty3-templates)
+* How To
+	* [Translate Friendica](help/translations)
+	* [Use Composer](help/Composer)
+	* [Move classes to `src`](help/Developer-How-To-Move-Classes-to-src)
+* Reference
+	* [Twitter/GNU Social API Functions](help/api)
+	* [Code (Doxygen generated - sets cookies)](doc/html/)
+	* [Protocol Documentation](help/Protocol)
+	* [Database schema documantation](help/database)
+	* [Class Autoloading](help/autoloader)
 
 **External Resources**
 
@@ -50,4 +64,5 @@ Friendica Documentation and Resources
 **About**
 
 * [Site/Version Info](friendica)
+* [Friendica Credits](credits)
 

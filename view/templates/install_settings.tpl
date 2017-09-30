@@ -1,6 +1,6 @@
 
 
-<h1>{{$title}}</h1>
+<h1><img src="{{$baseurl}}/images/friendica-32.png"> {{$title}}</h1>
 <h2>{{$pass}}</h2>
 
 
@@ -19,6 +19,7 @@
 
 {{include file="field_input.tpl" field=$adminmail}}
 {{$timezone}}
+{{include file="field_select.tpl" field=$language}}
 
 <input id="install-submit" type="submit" name="submit" value="{{$submit|escape:'html'}}" /> 
 

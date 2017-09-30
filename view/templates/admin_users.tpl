@@ -39,6 +39,9 @@
 						<a href="{{$baseurl}}/regmod/deny/{{$u.hash}}" title='{{$deny}}'><span class='icon dislike'></span></a>
 					</td>
 				</tr>
+				<tr>
+					<td class="pendingnote"><p><span>{{$pendingnotetext}}:</span> {{$u.note}}</p></td>
+				</tr>
 			{{/foreach}}
 				</tbody>
 			</table>
@@ -54,7 +57,21 @@
 				<thead>
 				<tr>
 					<th></th>
-					{{foreach $th_users as $th}}<th>{{$th}}</th>{{/foreach}}
+					{{foreach $th_users as $th}}
+					<th>
+						<a href="{{$baseurl}}/admin/users/?o={{if $order_direction_users == "+"}}-{{/if}}{{$th.1}}">
+							{{if $order_users == $th.1}}
+								{{if $order_direction_users == "+"}}
+								&#8595;
+								{{else}}
+								&#8593;
+								{{/if}}
+							{{else}}
+								&#8597;
+							{{/if}}
+						{{$th.0}}</a>
+					</th>
+					{{/foreach}}
 					<th></th>
 					<th></th>
 				</tr>
@@ -70,18 +87,18 @@
 						<td class='lastitem_date'>{{$u.lastitem_date}}</td>
 						<td class='login_date'>{{$u.page_flags}} {{if $u.is_admin}}({{$siteadmin}}){{/if}} {{if $u.account_expired}}({{$accountexpired}}){{/if}}</td>
 						<td class="checkbox"> 
-                                    {{if $u.is_admin}}
-                                        &nbsp;
-                                    {{else}}
-                                        <input type="checkbox" class="users_ckbx" id="id_user_{{$u.uid}}" name="user[]" value="{{$u.uid}}"/></td>
-                                    {{/if}}
+						{{if $u.is_deletable}}
+							<input type="checkbox" class="users_ckbx" id="id_user_{{$u.uid}}" name="user[]" value="{{$u.uid}}"/></td>
+						{{else}}
+							&nbsp;
+						{{/if}}
 						<td class="tools">
-                                    {{if $u.is_admin}}
-                                        &nbsp;
-                                    {{else}}
-                                        <a href="{{$baseurl}}/admin/users/block/{{$u.uid}}?t={{$form_security_token}}" title='{{if $u.blocked}}{{$unblock}}{{else}}{{$block}}{{/if}}'><span class='icon block {{if $u.blocked==0}}dim{{/if}}'></span></a>
-                                        <a href="{{$baseurl}}/admin/users/delete/{{$u.uid}}?t={{$form_security_token}}" title='{{$delete}}' onclick="return confirm_delete('{{$u.name}}')"><span class='icon drop'></span></a>
-                                    {{/if}}
+						{{if $u.is_deletable}}
+							<a href="{{$baseurl}}/admin/users/block/{{$u.uid}}?t={{$form_security_token}}" title='{{if $u.blocked}}{{$unblock}}{{else}}{{$block}}{{/if}}'><span class='icon block {{if $u.blocked==0}}dim{{/if}}'></span></a>
+							<a href="{{$baseurl}}/admin/users/delete/{{$u.uid}}?t={{$form_security_token}}" title='{{$delete}}' onclick="return confirm_delete('{{$u.name}}')"><span class='icon drop'></span></a>
+						{{else}}
+							&nbsp;
+						{{/if}}
 						</td>
 					</tr>
 				{{/foreach}}

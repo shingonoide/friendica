@@ -1,10 +1,12 @@
 <?php
 
+use Friendica\App;
+
 function post_var($name) {
 	return (x($_POST, $name)) ? notags(trim($_POST[$name])) : '';
 }
 
-function pubsubhubbub_init(&$a) {
+function pubsubhubbub_init(App $a) {
 	// PuSH subscription must be considered "public" so just block it
 	// if public access isn't enabled.
 	if (get_config('system', 'block_public')) {
@@ -39,7 +41,7 @@ function pubsubhubbub_init(&$a) {
 			http_status_exit(404);
 		}
 
-		logger("pubsubhubbub: $hub_mode request from " . 
+		logger("pubsubhubbub: $hub_mode request from " .
 			   $_SERVER['REMOTE_ADDR']);
 
 		// get the nick name from the topic, a bit hacky but needed
@@ -52,10 +54,10 @@ function pubsubhubbub_init(&$a) {
 
 		// fetch user from database given the nickname
 		$r = q("SELECT * FROM `user` WHERE `nickname` = '%s'" .
-			   " AND `account_expired` = 0 AND `account_removed` = 0 LIMIT 1", 
+			   " AND `account_expired` = 0 AND `account_removed` = 0 LIMIT 1",
 			   dbesc($nick));
-		
-		if(!count($r)) {
+
+		if (!dbm::is_result($r)) {
 			logger('pubsubhubbub: local account not found: ' . $nick);
 			http_status_exit(404);
 		}
@@ -70,10 +72,10 @@ function pubsubhubbub_init(&$a) {
 		}
 
 		// get corresponding row from contact table
-		$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND `blocked` = 0" .
-			   " AND `pending` = 0 LIMIT 1",
+		$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND NOT `blocked`".
+			   " AND NOT `pending` AND `self` LIMIT 1",
 			   intval($owner['uid']));
-		if(!count($r)) {
+		if (!dbm::is_result($r)) {
 			logger('pubsubhubbub: contact not found.');
 			http_status_exit(404);
 		}
@@ -82,20 +84,20 @@ function pubsubhubbub_init(&$a) {
 
 		// sanity check that topic URLs are the same
 		if(!link_compare($hub_topic, $contact['poll'])) {
-			logger('pubsubhubbub: hub topic ' . $hub_topic . ' != ' . 
+			logger('pubsubhubbub: hub topic ' . $hub_topic . ' != ' .
 				   $contact['poll']);
 			http_status_exit(404);
 		}
 
 		// do subscriber verification according to the PuSH protocol
 		$hub_challenge = random_string(40);
-		$params = 'hub.mode=' . 
+		$params = 'hub.mode=' .
 			($subscribe == 1 ? 'subscribe' : 'unsubscribe') .
 			'&hub.topic=' . urlencode($hub_topic) .
 			'&hub.challenge=' . $hub_challenge .
 			'&hub.lease_seconds=604800' .
 			'&hub.verify_token=' . $hub_verify_token;
-		
+
 		// lease time is hard coded to one week (in seconds)
 		// we don't actually enforce the lease time because GNU
 		// Social/StatusNet doesn't honour it (yet)
@@ -132,7 +134,7 @@ function pubsubhubbub_init(&$a) {
 
 			// if we are just updating an old subscription, keep the
 			// old values for push and last_update
-			if (count($r)) {
+			if (dbm::is_result($r)) {
 				$last_update = $r[0]['last_update'];
 				$push_flag = $r[0]['push'];
 			}
@@ -158,5 +160,3 @@ function pubsubhubbub_init(&$a) {
 
 	killme();
 }
-
-?>

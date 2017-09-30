@@ -1,17 +1,20 @@
 <?php
 
-function toggle_mobile_init(&$a) {
+use Friendica\App;
 
-	if(isset($_GET['off']))
+function toggle_mobile_init(App $a) {
+
+	if (isset($_GET['off'])) {
 		$_SESSION['show-mobile'] = false;
-	else
+	} else {
 		$_SESSION['show-mobile'] = true;
+	}
 
-	if(isset($_GET['address']))
+	if (isset($_GET['address'])) {
 		$address = $_GET['address'];
-	else
-		$address = $a->get_baseurl();
+	} else {
+		$address = App::get_baseurl();
+	}
 
 	goaway($address);
 }
-

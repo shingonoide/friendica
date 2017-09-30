@@ -1,5 +1,5 @@
 <?php
-
+require_once('include/diaspora.php');
 
 function contact_profile_assign($current,$foreign_net) {
 
@@ -7,14 +7,14 @@ function contact_profile_assign($current,$foreign_net) {
 
 	$disabled = (($foreign_net) ? ' disabled="true" ' : '');
 
-	$o .= "<select id=\"contact-profile-selector\" $disabled name=\"profile-assign\" />\r\n";
+	$o .= "<select id=\"contact-profile-selector\" class=\"form-control\" $disabled name=\"profile-assign\" />\r\n";
 
-	$r = q("SELECT `id`, `profile-name` FROM `profile` WHERE `uid` = %d",
-                        intval($_SESSION['uid']));
+	$r = q("SELECT `id`, `profile-name`, `is-default` FROM `profile` WHERE `uid` = %d",
+			intval($_SESSION['uid']));
 
-	if(count($r)) {
-		foreach($r as $rr) {
-			$selected = (($rr['id'] == $current) ? " selected=\"selected\" " : "");
+	if (dbm::is_result($r)) {
+		foreach ($r as $rr) {
+			$selected = (($rr['id'] == $current || ($current == 0 && $rr['is-default'] == 1)) ? " selected=\"selected\" " : "");
 			$o .= "<option value=\"{$rr['id']}\" $selected >{$rr['profile-name']}</option>\r\n";
 		}
 	}
@@ -37,7 +37,7 @@ function contact_reputation($current) {
 		5 => t('Reputable, has my trust')
 	);
 
-	foreach($rep as $k => $v) {
+	foreach ($rep as $k => $v) {
 		$selected = (($k == $current) ? " selected=\"selected\" " : "");
 		$o .= "<option value=\"$k\" $selected >$v</option>\r\n";
 	}
@@ -61,7 +61,7 @@ function contact_poll_interval($current, $disabled = false) {
 		5 => t('Monthly')
 	);
 
-	foreach($rep as $k => $v) {
+	foreach ($rep as $k => $v) {
 		$selected = (($k == $current) ? " selected=\"selected\" " : "");
 		$o .= "<option value=\"$k\" $selected >$v</option>\r\n";
 	}
@@ -70,7 +70,7 @@ function contact_poll_interval($current, $disabled = false) {
 }
 
 
-function network_to_name($s) {
+function network_to_name($s, $profile = "") {
 
 	$nets = array(
 		NETWORK_DFRN     => t('Friendica'),
@@ -88,7 +88,8 @@ function network_to_name($s) {
 		NETWORK_PUMPIO   => t('pump.io'),
 		NETWORK_TWITTER  => t('Twitter'),
 		NETWORK_DIASPORA2 => t('Diaspora Connector'),
-		NETWORK_STATUSNET => t('Statusnet'),
+		NETWORK_STATUSNET => t('GNU Social Connector'),
+		NETWORK_PNUT      => t('pnut'),
 		NETWORK_APPNET => t('App.net')
 	);
 
@@ -97,6 +98,17 @@ function network_to_name($s) {
 	$search  = array_keys($nets);
 	$replace = array_values($nets);
 
-	return str_replace($search,$replace,$s);
+	$networkname = str_replace($search, $replace, $s);
 
+	if ((in_array($s, array(NETWORK_DFRN, NETWORK_DIASPORA, NETWORK_OSTATUS))) AND ($profile != "")) {
+		$r = q("SELECT `gserver`.`platform` FROM `gcontact`
+				INNER JOIN `gserver` ON `gserver`.`nurl` = `gcontact`.`server_url`
+				WHERE `gcontact`.`nurl` = '%s' AND `platform` != ''",
+				dbesc(normalise_link($profile)));
+		if (dbm::is_result($r)) {
+			$networkname = $r[0]["platform"];
+		}
+	}
+
+	return $networkname;
 }

@@ -1,25 +1,25 @@
 <?php
 
-function apps_content(&$a) {
-    $privateaddons = get_config('config','private_addons');
-      if ($privateaddons === "1") {
-	if((! (local_user())))  {
-	info( t("You must be logged in to use addons. "));
-      return;};
-}
+use Friendica\App;
 
-      $title = t('Applications');
+function apps_content(App $a) {
+	$privateaddons = get_config('config', 'private_addons');
+	if ($privateaddons === "1") {
+		if (! local_user()) {
+			info(t('You must be logged in to use addons. '));
+			return;
+		};
+	}
 
-	if(count($a->apps)==0)
-		notice( t('No installed applications.') . EOL);
+	$title = t('Applications');
 
+	if (count($a->apps) == 0) {
+		notice(t('No installed applications.') . EOL);
+	}
 
-	$tpl = get_markup_template("apps.tpl");
+	$tpl = get_markup_template('apps.tpl');
 	return replace_macros($tpl, array(
 		'$title' => $title,
 		'$apps' => $a->apps,
 	));
-
-	
-
 }

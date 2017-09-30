@@ -1,9 +1,12 @@
 <?php
 
-function qsearch_init(&$a) {
+use Friendica\App;
 
-	if(! local_user())
+function qsearch_init(App $a) {
+
+	if (! local_user()) {
 		killme();
+	}
 
 	$limit = (get_config('system','qsearch_limit') ? intval(get_config('system','qsearch_limit')) : 100);
 
@@ -23,7 +26,7 @@ function qsearch_init(&$a) {
 		intval($limit)
 	);
 
-	if(count($r)) {
+	if (dbm::is_result($r)) {
 
 		foreach($r as $rr)
 			$results[] = array( 0, (int) $rr['id'], $rr['name'], '', '');
@@ -38,7 +41,7 @@ function qsearch_init(&$a) {
 	);
 
 
-	if(count($r)) {
+	if (dbm::is_result($r)) {
 
 		foreach($r as $rr)
 			$results[] = array( (int) $rr['id'], 0, $rr['name'],$rr['url'],$rr['photo']);
@@ -47,4 +50,3 @@ function qsearch_init(&$a) {
 	echo json_encode((object) $results);
 	killme();
 }
-

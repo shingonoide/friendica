@@ -44,6 +44,11 @@
 	</div>
 	<div id="register-email-end" ></div>
 
+{{if $passwords}}
+	{{include file="field_password.tpl" field=$password1}}
+	{{include file="field_password.tpl" field=$password2}}
+{{/if}}
+
 	<p id="register-nickname-desc" >{{$nickdesc}}</p>
 
 	<div id="register-nickname-wrapper" >
@@ -51,6 +56,10 @@
 		<input type="text" maxlength="60" size="32" name="nickname" id="register-nickname" value="{{$nickname|escape:'html'}}" ><div id="register-sitename">@{{$sitename}}</div>
 	</div>
 	<div id="register-nickname-end" ></div>
+
+{{if $permonly}}
+    {{include file="field_textarea.tpl" field=$permonlybox}}
+{{/if}}
 
 	{{$publish}}
 

@@ -27,6 +27,7 @@
 {{include file="field_input.tpl" field=$email}}
 {{include file="field_password.tpl" field=$password4}}
 {{include file="field_custom.tpl" field=$timezone}}
+{{include file="field_select.tpl" field=$language}}
 {{include file="field_input.tpl" field=$defloc}}
 {{include file="field_checkbox.tpl" field=$allowloc}}
 
@@ -134,6 +135,60 @@
 </div>
 
 {{include file="field_checkbox.tpl" field=$email_textonly}}
+
+
+<!--
+<div class="field">
+ <button onclick="javascript:Notification.requestPermission(function(perm){if(perm === 'granted')alert('{{$desktop_notifications_success_message}}');});return false;">{{$desktop_notifications}}</button>
+ <span class="field_help">{{$desktop_notifications_note}}</span>
+</div>
+-->
+{{include file="field_yesno.tpl" field=$desktop_notifications}}
+<script>
+(function(){
+    var elm = $("#id_{{$desktop_notifications.0}}_onoff");
+    var ckbox = $("#id_{{$desktop_notifications.0}}");
+
+    if (getNotificationPermission() === 'granted') {
+        ckbox.val(1);
+        elm.find(".off").addClass("hidden");
+        elm.find(".on").removeClass("hidden");
+    }
+	if (getNotificationPermission() === null) {
+		elm.parent(".field.yesno").hide();
+	}
+
+    $("#id_{{$desktop_notifications.0}}_onoff").on("click", function(e){
+
+        if (Notification.permission === 'granted') {
+            localStorage.setItem('notification-permissions', ckbox.val()==1 ? 'granted' : 'denied');
+        } else if (Notification.permission === 'denied') {
+            localStorage.setItem('notification-permissions', 'denied');
+
+            ckbox.val(0);
+            elm.find(".on").addClass("hidden");
+            elm.find(".off").removeClass("hidden");
+
+        } else if (Notification.permission === 'default') {
+            Notification.requestPermission(function(choice) {
+                if (choice === 'granted') {
+                    localStorage.setItem('notification-permissions', ckbox.val()==1 ? 'granted' : 'denied');
+
+                } else {
+                    localStorage.setItem('notification-permissions', 'denied');
+                    ckbox.val(0);
+                    elm.find(".on").addClass("hidden");
+                    elm.find(".off").removeClass("hidden");
+                }
+            });
+        }
+
+		//console.log(getNotificationPermission());
+
+
+    })
+})();
+</script>
 
 </div>
 

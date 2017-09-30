@@ -126,8 +126,8 @@ class Conversation extends BaseObject {
 	 *      _ The data requested on success
 	 *      _ false on failure
 	 */
-	public function get_template_data($alike, $dlike) {
-		global $a;
+	public function get_template_data($conv_responses) {
+		$a = get_app();
 		$result = array();
 
 		$i = 0;
@@ -136,7 +136,7 @@ class Conversation extends BaseObject {
 			if($item->get_data_value('network') === NETWORK_MAIL && local_user() != $item->get_data_value('uid'))
 				continue;
 
-			$item_data = $item->get_template_data($alike, $dlike);
+			$item_data = $item->get_template_data($conv_responses);
 
 			if(!$item_data) {
 				logger('[ERROR] Conversation::get_template_data : Failed to get item template data ('. $item->get_id() .').', LOGGER_DEBUG);
@@ -145,7 +145,6 @@ class Conversation extends BaseObject {
 			$result[] = $item_data;
 		}
 
-		//$a->mark_timestamp();
 		return $result;
 	}
 
@@ -165,4 +164,3 @@ class Conversation extends BaseObject {
 		return false;
 	}
 }
-?>

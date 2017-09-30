@@ -1,12 +1,12 @@
 <?php
 
-// If automatic system installation fails: 
+// If automatic system installation fails:
 
 // Copy or rename this file to .htconfig.php
 
 // Why .htconfig.php? Because it contains sensitive information which could
-// give somebody complete control of your database. Apache's default 
-// configuration denies access to and refuses to serve any file beginning 
+// give somebody complete control of your database. Apache's default
+// configuration denies access to and refuses to serve any file beginning
 // with .ht
 
 // Then set the following for your MySQL installation
@@ -16,21 +16,30 @@ $db_user = 'mysqlusername';
 $db_pass = 'mysqlpassword';
 $db_data = 'mysqldatabasename';
 
+// Set the database connection charset to full Unicode (utf8mb4).
+// Changing this value will likely corrupt the special characters.
+// You have been warned.
+$a->config['system']['db_charset'] = "utf8mb4";
+
 // Choose a legal default timezone. If you are unsure, use "America/Los_Angeles".
 // It can be changed later and only applies to timestamps for anonymous viewers.
 
 $default_timezone = 'America/Los_Angeles';
+
+// Default system language
+
+$a->config['system']['language'] = 'en';
 
 // What is your site name?
 
 $a->config['sitename'] = "Friendica Social Network";
 
 // Your choices are REGISTER_OPEN, REGISTER_APPROVE, or REGISTER_CLOSED.
-// Be certain to create your own personal account before setting 
-// REGISTER_CLOSED. 'register_text' (if set) will be displayed prominently on 
+// Be certain to create your own personal account before setting
+// REGISTER_CLOSED. 'register_text' (if set) will be displayed prominently on
 // the registration page. REGISTER_APPROVE requires you set 'admin_email'
 // to the email address of an already registered person who can authorise
-// and/or approve/deny the request. 
+// and/or approve/deny the request.
 
 // In order to perform system administration via the admin panel, admin_email
 // must precisely match the email address of the person logged in.
@@ -51,46 +60,37 @@ $a->config['system']['maximagesize'] = 800000;
 
 $a->config['php_path'] = 'php';
 
-// You shouldn't need to change anything else.
-// Location of global directory submission page. 
-
-$a->config['system']['directory_submit_url'] = 'http://dir.friendica.com/submit';
-$a->config['system']['directory_search_url'] = 'http://dir.friendica.com/directory?search=';
-
 // PuSH - aka pubsubhubbub URL. This makes delivery of public posts as fast as private posts
 
 $a->config['system']['huburl'] = '[internal]';
 
-// Server-to-server private message encryption (RINO) is allowed by default. 
-// Encryption will only be provided if this setting is true and the
-// PHP mcrypt extension is installed on both systems 
+// Server-to-server private message encryption (RINO) is allowed by default.
+// Encryption will only be provided if this setting is set to a non zero value
+// set to 0 to disable, 2 to enable, 1 is deprecated
 
-$a->config['system']['rino_encrypt'] = true;
+$a->config['system']['rino_encrypt'] = 2;
 
 // allowed themes (change this from admin panel after installation)
 
-$a->config['system']['allowed_themes'] = 'dispy,quattro,vier,darkzero,duepuntozero,greenzero,purplezero,slackr,diabook';
+$a->config['system']['allowed_themes'] = 'quattro,vier,duepuntozero,smoothly';
 
 // default system theme
 
-$a->config['system']['theme'] = 'duepuntozero';
+$a->config['system']['theme'] = 'vier';
 
 
 // By default allow pseudonyms
 
 $a->config['system']['no_regfullname'] = true;
 
-// If set to true the priority settings of ostatus contacts are used
-$a->config['system']['ostatus_use_priority'] = false;
+//Deny public access to the local directory
+//$a->config['system']['block_local_dir'] = false;
 
-// If enabled, all items are cached in the given directory
-$a->config['system']['itemcache'] = "";
+// Location of the global directory
+$a->config['system']['directory'] = 'https://dir.friendica.social';
 
-// If enabled, the lockpath is used for a lockfile to check if the poller is running
-$a->config['system']['lockpath'] = "";
+// Allowed protocols in link URLs; HTTP protocols always are accepted
+$a->config['system']['allowed_link_protocols'] = array('ftp', 'ftps', 'mailto', 'cid', 'gopher');
 
-// If enabled, the MyBB fulltext engine is used
-// $a->config['system']['use_fulltext_engine'] = true;
-
-// Use the old style "share"
-// $a->config['system']['old_share'] = false;
+// Authentication cookie lifetime, in days
+$a->config['system']['auth_cookie_lifetime'] = 7;

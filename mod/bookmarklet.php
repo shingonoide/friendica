@@ -1,21 +1,23 @@
 <?php
 
+use Friendica\App;
+
 require_once('include/conversation.php');
 require_once('include/items.php');
 
-function bookmarklet_init(&$a) {
+function bookmarklet_init(App $a) {
 	$_GET["mode"] = "minimal";
 }
 
-function bookmarklet_content(&$a) {
-	if(!local_user()) {
+function bookmarklet_content(App $a) {
+	if (!local_user()) {
 		$o = '<h2>'.t('Login').'</h2>';
 		$o .= login(($a->config['register_policy'] == REGISTER_CLOSED) ? false : true);
 		return $o;
 	}
 
 	$referer = normalise_link($_SERVER["HTTP_REFERER"]);
-	$page = normalise_link($a->get_baseurl()."/bookmarklet");
+	$page = normalise_link(App::get_baseurl()."/bookmarklet");
 
 	if (!strstr($referer, $page)) {
 		$content = add_page_info($_REQUEST["url"]);
@@ -27,7 +29,7 @@ function bookmarklet_content(&$a) {
 			'nickname' => $a->user['nickname'],
 			'lockstate' => ((is_array($a->user) && ((strlen($a->user['allow_cid'])) || (strlen($a->user['allow_gid'])) || (strlen($a->user['deny_cid'])) || (strlen($a->user['deny_gid'])))) ? 'lock' : 'unlock'),
 			'default_perms' => get_acl_permissions($a->user),
-			'acl' => populate_acl($a->user, $celeb),
+			'acl' => populate_acl($a->user,true),
 			'bang' => '',
 			'visitor' => 'block',
 			'profile_uid' => local_user(),

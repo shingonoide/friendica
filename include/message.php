@@ -1,17 +1,16 @@
 <?php
 
-	// send a private message
-	
+// send a private message
 
+use Friendica\App;
 
-
-function send_message($recipient=0, $body='', $subject='', $replyto=''){ 
+function send_message($recipient=0, $body='', $subject='', $replyto=''){
 
 	$a = get_app();
 
-	if(! $recipient) return -1;
-	
-	if(! strlen($subject))
+	if (! $recipient) return -1;
+
+	if (! strlen($subject))
 		$subject = t('[no subject]');
 
 	$me = q("SELECT * FROM `contact` WHERE `uid` = %d AND `self` = 1 LIMIT 1",
@@ -22,40 +21,41 @@ function send_message($recipient=0, $body='', $subject='', $replyto=''){
 			intval(local_user())
 	);
 
-	if(! (count($me) && (count($contact)))) {
+	if (! (count($me) && (count($contact)))) {
 		return -2;
 	}
 
-	$hash = random_string();
- 	$uri = 'urn:X-dfrn:' . $a->get_baseurl() . ':' . local_user() . ':' . $hash ;
+	$guid = get_guid(32);
+ 	$uri = 'urn:X-dfrn:' . App::get_baseurl() . ':' . local_user() . ':' . $guid;
 
 	$convid = 0;
 	$reply = false;
 
 	// look for any existing conversation structure
 
-	if(strlen($replyto)) {
+	if (strlen($replyto)) {
 		$reply = true;
 		$r = q("select convid from mail where uid = %d and ( uri = '%s' or `parent-uri` = '%s' ) limit 1",
 			intval(local_user()),
 			dbesc($replyto),
 			dbesc($replyto)
 		);
-		if(count($r))
+		if (dbm::is_result($r))
 			$convid = $r[0]['convid'];
-	}		
+	}
 
-	if(! $convid) {
+	if (! $convid) {
 
 		// create a new conversation
-
-		$conv_guid = get_guid();
 
 		$recip_host = substr($contact[0]['url'],strpos($contact[0]['url'],'://')+3);
 		$recip_host = substr($recip_host,0,strpos($recip_host,'/'));
 
 		$recip_handle = (($contact[0]['addr']) ? $contact[0]['addr'] : $contact[0]['nick'] . '@' . $recip_host);
-		$sender_handle = $a->user['nickname'] . '@' . substr($a->get_baseurl(), strpos($a->get_baseurl(),'://') + 3);
+		$sender_handle = $a->user['nickname'] . '@' . substr(App::get_baseurl(), strpos(App::get_baseurl(),'://') + 3);
+
+		$conv_guid = get_guid(32);
+		$convuri = $recip_handle.':'.$conv_guid;
 
 		$handles = $recip_handle . ';' . $sender_handle;
 
@@ -73,25 +73,25 @@ function send_message($recipient=0, $body='', $subject='', $replyto=''){
 			dbesc($conv_guid),
 			intval(local_user())
 		);
-		if(count($r))
+		if (dbm::is_result($r))
 			$convid = $r[0]['id'];
 	}
 
-	if(! $convid) {
+	if (! $convid) {
 		logger('send message: conversation not found.');
 		return -4;
 	}
 
-	if(! strlen($replyto)) {
-		$replyto = $uri;
+	if (! strlen($replyto)) {
+		$replyto = $convuri;
 	}
 
 
-	$r = q("INSERT INTO `mail` ( `uid`, `guid`, `convid`, `from-name`, `from-photo`, `from-url`, 
+	$r = q("INSERT INTO `mail` ( `uid`, `guid`, `convid`, `from-name`, `from-photo`, `from-url`,
 		`contact-id`, `title`, `body`, `seen`, `reply`, `replied`, `uri`, `parent-uri`, `created`)
 		VALUES ( %d, '%s', %d, '%s', '%s', '%s', %d, '%s', '%s', %d, %d, %d, '%s', '%s', '%s' )",
 		intval(local_user()),
-		dbesc(get_guid()),
+		dbesc($guid),
 		intval($convid),
 		dbesc($me[0]['name']),
 		dbesc($me[0]['thumb']),
@@ -112,12 +112,12 @@ function send_message($recipient=0, $body='', $subject='', $replyto=''){
 		dbesc($uri),
 		intval(local_user())
 	);
-	if(count($r))
+	if (dbm::is_result($r))
 		$post_id = $r[0]['id'];
 
 	/**
 	 *
-	 * When a photo was uploaded into the message using the (profile wall) ajax 
+	 * When a photo was uploaded into the message using the (profile wall) ajax
 	 * uploader, The permissions are initially set to disallow anybody but the
 	 * owner from seeing it. This is because the permissions may not yet have been
 	 * set for the post. If it's private, the photo permissions should be set
@@ -129,12 +129,13 @@ function send_message($recipient=0, $body='', $subject='', $replyto=''){
 
 	$match = null;
 
-	if(preg_match_all("/\[img\](.*?)\[\/img\]/",$body,$match)) {
+	if (preg_match_all("/\[img\](.*?)\[\/img\]/",$body,$match)) {
 		$images = $match[1];
-		if(count($images)) {
-			foreach($images as $image) {
-				if(! stristr($image,$a->get_baseurl() . '/photo/'))
+		if (count($images)) {
+			foreach ($images as $image) {
+				if (! stristr($image,App::get_baseurl() . '/photo/')) {
 					continue;
+				}
 				$image_uri = substr($image,strrpos($image,'/') + 1);
 				$image_uri = substr($image_uri,0, strpos($image_uri,'-'));
 				$r = q("UPDATE `photo` SET `allow_cid` = '%s'
@@ -143,13 +144,13 @@ function send_message($recipient=0, $body='', $subject='', $replyto=''){
 					dbesc($image_uri),
 					dbesc( t('Wall Photos')),
 					intval(local_user())
-				); 
+				);
 			}
 		}
 	}
-	
-	if($post_id) {
-		proc_run('php',"include/notifier.php","mail","$post_id");
+
+	if ($post_id) {
+		proc_run(PRIORITY_HIGH, "include/notifier.php", "mail", $post_id);
 		return intval($post_id);
 	} else {
 		return -3;
@@ -157,36 +158,33 @@ function send_message($recipient=0, $body='', $subject='', $replyto=''){
 
 }
 
+function send_wallmessage($recipient='', $body='', $subject='', $replyto=''){
 
+	if (! $recipient) {
+		return -1;
+	}
 
-
-
-function send_wallmessage($recipient='', $body='', $subject='', $replyto=''){ 
-
-	$a = get_app();
-
-
-	if(! $recipient) return -1;
-	
-	if(! strlen($subject))
+	if (! strlen($subject)) {
 		$subject = t('[no subject]');
+	}
 
-	$hash = random_string();
- 	$uri = 'urn:X-dfrn:' . $a->get_baseurl() . ':' . local_user() . ':' . $hash ;
+	$guid = get_guid(32);
+ 	$uri = 'urn:X-dfrn:' . App::get_baseurl() . ':' . local_user() . ':' . $guid;
 
 	$convid = 0;
 	$reply = false;
 
-	require_once('include/Scrape.php');
+	require_once 'include/probe.php';
 
 	$me = probe_url($replyto);
 
-	if(! $me['name'])
+	if (! $me['name']) {
 		return -2;
+	}
 
-	$conv_guid = get_guid();
+	$conv_guid = get_guid(32);
 
-	$recip_handle = $recipient['nickname'] . '@' . substr($a->get_baseurl(), strpos($a->get_baseurl(),'://') + 3);
+	$recip_handle = $recipient['nickname'] . '@' . substr(App::get_baseurl(), strpos(App::get_baseurl(),'://') + 3);
 
 	$sender_nick = basename($replyto);
 	$sender_host = substr($replyto,strpos($replyto,'://')+3);
@@ -195,7 +193,7 @@ function send_wallmessage($recipient='', $body='', $subject='', $replyto=''){
 
 	$handles = $recip_handle . ';' . $sender_handle;
 
-	$r = q("insert into conv (uid,guid,creator,created,updated,subject,recips) values(%d, '%s', '%s', '%s', '%s', '%s', '%s') ",
+	$r = q("INSERT INTO `conv` (`uid`,`guid`,`creator`,`created`,`updated`,`subject`,`recips`) values(%d, '%s', '%s', '%s', '%s', '%s', '%s') ",
 		intval($recipient['uid']),
 		dbesc($conv_guid),
 		dbesc($sender_handle),
@@ -205,23 +203,24 @@ function send_wallmessage($recipient='', $body='', $subject='', $replyto=''){
 		dbesc($handles)
 	);
 
-	$r = q("select * from conv where guid = '%s' and uid = %d limit 1",
+	$r = q("SELECT * FROM `conv` WHERE `guid` = '%s' AND `uid` = %d LIMIT 1",
 		dbesc($conv_guid),
 		intval($recipient['uid'])
 	);
-	if(count($r))
-		$convid = $r[0]['id'];
 
-	if(! $convid) {
+
+	if (! dbm::is_result($r)) {
 		logger('send message: conversation not found.');
 		return -4;
 	}
 
-	$r = q("INSERT INTO `mail` ( `uid`, `guid`, `convid`, `from-name`, `from-photo`, `from-url`, 
+	$convid = $r[0]['id'];
+
+	$r = q("INSERT INTO `mail` ( `uid`, `guid`, `convid`, `from-name`, `from-photo`, `from-url`,
 		`contact-id`, `title`, `body`, `seen`, `reply`, `replied`, `uri`, `parent-uri`, `created`, `unknown`)
 		VALUES ( %d, '%s', %d, '%s', '%s', '%s', %d, '%s', '%s', %d, %d, %d, '%s', '%s', '%s', %d )",
 		intval($recipient['uid']),
-		dbesc(get_guid()),
+		dbesc($guid),
 		intval($convid),
 		dbesc($me['name']),
 		dbesc($me['photo']),
